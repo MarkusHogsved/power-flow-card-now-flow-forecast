@@ -39,7 +39,7 @@ describe("computeModel - 20/10 evening on batteries", () => {
     expect(model.restW).toBe(1951 - 83 - 87);
   });
 
-  test("a battery without a power entity is idle, SOC still read", () => {
+  test("an idle battery has zero power, SOC still read", () => {
     const anker = model.batteries[2];
     expect(anker.powerW).toBe(0);
     expect(anker.soc).toBe(31);
@@ -94,6 +94,42 @@ describe("computeStatus", () => {
     [{}, "idle"],
   ])("%o -> %s", (patch, expected) => {
     expect(computeStatus({ ...base, ...patch })).toBe(expected);
+  });
+});
+
+describe("battery power sources", () => {
+  const base: Record<string, string | [string, Record<string, unknown>]> = {
+    "sensor.home": "2436",
+    "sensor.soc": ["80", { unit_of_measurement: "%" }],
+  };
+
+  test("a list of entities is summed (20/10: BMS 1 + BMS 2 discharge 1054 + 1423 W)", () => {
+    const hass = makeHass({ ...base, "sensor.d1": "1054", "sensor.d2": "1423", "sensor.c1": "0", "sensor.c2": "0" });
+    const model = computeModel(hass, {
+      type: "x",
+      home: { entity: "sensor.home" },
+      batteries: [{ state_of_charge: "sensor.soc", charge_entity: ["sensor.c1", "sensor.c2"], discharge_entity: ["sensor.d1", "sensor.d2"] }],
+    });
+    expect(model.batteries[0].powerW).toBe(-2477);
+    expect(model.flows.batteryToHome).toBe(2436);
+  });
+
+  test("entity also accepts a list", () => {
+    const hass = makeHass({ ...base, "sensor.p1": "-1000", "sensor.p2": ["-0.5", { unit_of_measurement: "kW" }] });
+    const model = computeModel(hass, {
+      type: "x",
+      home: { entity: "sensor.home" },
+      batteries: [{ state_of_charge: "sensor.soc", entity: ["sensor.p1", "sensor.p2"] }],
+    });
+    expect(model.batteries[0].powerW).toBe(-1500);
+  });
+
+  test("inside-home battery charging (UPS emergency charge) is shown but kept out of the flows", () => {
+    const hass = makeHass({ ...eveningStates, "sensor.anker_charge": "1210" });
+    const model = computeModel(hass, houseConfig);
+    expect(model.batteries[2].powerW).toBe(1210);
+    expect(model.batteryChargeW).toBe(0);
+    expect(model.flows.gridToBattery + model.flows.solarToBattery).toBe(0);
   });
 });
 

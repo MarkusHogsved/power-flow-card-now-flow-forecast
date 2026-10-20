@@ -1,5 +1,6 @@
 import { html, nothing, svg } from "lit";
 import {
+  netDemandKwh,
   peakIndex,
   readLoadCast,
   readSolarP10ByHour,
@@ -59,8 +60,9 @@ export const renderForecast = (ctx: ViewContext) => {
   const error = readNumber(hass, config.loadcast?.error);
   const solarTomorrow = readNumber(hass, config.solar?.forecast_tomorrow);
 
-  const takeover = solarTakeoverIndex(hours, readSolarP10ByHour(hass, config.solar?.forecast_entities));
-  const demand = sumKwh(hours, takeover ?? hours.length);
+  const solarP10 = readSolarP10ByHour(hass, config.solar?.forecast_entities);
+  const takeover = solarTakeoverIndex(hours, solarP10);
+  const demand = netDemandKwh(hours, solarP10, takeover ?? hours.length);
   const usable = usableBatteryKwh(m.batteries);
   const scale = Math.max(demand, usable ?? 0, 0.1);
 

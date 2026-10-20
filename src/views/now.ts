@@ -36,10 +36,20 @@ const idleLine = (path: string) =>
 
 const batteryColor = (b: BatteryState): string => (b.soc !== null && b.soc < 30 ? COLORS.batteryLow : COLORS.battery);
 
+// Same arrows as the bank header: up = out of the battery, down = into it.
+const arrow = (b: BatteryState): string => (b.powerW < 0 ? " ↑" : b.powerW > 0 ? " ↓" : "");
+
 const cell = (ctx: ViewContext, b: BatteryState) => html`
-  <div class="cell" @click=${() => ctx.moreInfo(b.stateOfChargeEntity)} title=${b.name}>
+  <div
+    class="cell"
+    @click=${() => ctx.moreInfo(b.stateOfChargeEntity)}
+    title="${b.name}${b.powerW ? ` · ${formatPower(ctx.hass, b.powerW)}` : ""}"
+  >
     <div class="cell-icon"><span style="height: ${b.soc ?? 0}%; background: ${batteryColor(b)}"></span></div>
-    <span><b>${b.soc === null ? "–" : formatPercent(ctx.hass, b.soc)}</b><br /><span class="muted">${b.name}</span></span>
+    <span>
+      <b>${b.soc === null ? "–" : formatPercent(ctx.hass, b.soc)}</b><b style="color: ${COLORS.battery}">${arrow(b)}</b><br />
+      <span class="muted">${b.name}</span>
+    </span>
   </div>
 `;
 
@@ -57,7 +67,10 @@ export const renderNow = (ctx: ViewContext) => {
   const hasSolar = !!config.solar;
   const hasGrid = !!config.grid;
   const hasBatteries = m.batteries.length > 0;
-  const netBattery = m.batteryDischargeW - m.batteryChargeW;
+  // Bank header: all batteries, inside-home ones too - discharge and charge
+  // separately, since a net figure hides one battery charging another.
+  const bankOut = m.batteries.reduce((s, b) => s + Math.max(-b.powerW, 0), 0);
+  const bankIn = m.batteries.reduce((s, b) => s + Math.max(b.powerW, 0), 0);
   const solarToday = readNumber(hass, config.solar?.today_energy);
 
   return html`
@@ -125,7 +138,9 @@ export const renderNow = (ctx: ViewContext) => {
                 <div class="row">
                   <span class="muted" style="font-size: 12px; font-weight: 600">${t("node.batteries")}</span>
                   <b style="font-size: 13px; color: ${COLORS.battery}">
-                    ${netBattery > 0 ? "↑" : netBattery < 0 ? "↓" : ""} ${formatPower(hass, netBattery)}
+                    ${bankOut > 0 ? `↑ ${formatPower(hass, bankOut)}` : ""}${bankOut > 0 && bankIn > 0 ? "  " : ""}${bankIn > 0
+                      ? `↓ ${formatPower(hass, bankIn)}`
+                      : ""}${bankOut + bankIn === 0 ? formatPower(hass, 0) : ""}
                   </b>
                 </div>
                 <div class="bank-cells">${m.batteries.map((b) => cell(ctx, b))}</div>

@@ -19,7 +19,14 @@ export const readPowerW = (hass: HomeAssistant, entityId: string | undefined): n
   return value * (POWER_FACTORS[unit] ?? 1);
 };
 
-export const friendlyName = (hass: HomeAssistant, entityId: string): string =>
+/** Sum of one or several power entities in W; null if none of them has a value. */
+export const readPowerSumW = (hass: HomeAssistant, entities: string | string[] | undefined): number | null => {
+  const ids = entities === undefined ? [] : Array.isArray(entities) ? entities : [entities];
+  const values = ids.map((id) => readPowerW(hass, id)).filter((v): v is number => v !== null);
+  return values.length ? values.reduce((s, v) => s + v, 0) : null;
+};
+
+export const friendlyName =(hass: HomeAssistant, entityId: string): string =>
   String(hass.states[entityId]?.attributes?.friendly_name ?? entityId);
 
 const locale = (hass: HomeAssistant): string => hass.locale?.language ?? hass.language ?? "en";

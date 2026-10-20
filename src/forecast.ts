@@ -84,6 +84,15 @@ export const solarTakeoverIndex = (hours: ForecastHour[], solarP10: Map<number, 
 export const sumKwh = (hours: ForecastHour[], until = hours.length): number =>
   hours.slice(0, until).reduce((s, h) => s + h.kwh, 0);
 
+/**
+ * What the batteries must supply: each hour's demand minus solar P10 that
+ * hour (never below zero - surplus solar in one hour does not pay for another).
+ */
+export const netDemandKwh = (hours: ForecastHour[], solarP10: Map<number, number>, until = hours.length): number =>
+  hours
+    .slice(0, until)
+    .reduce((s, h) => s + Math.max(h.kwh - (solarP10.get(h.start.getTime()) ?? 0), 0), 0);
+
 /** Energy above each battery's reserve, for batteries with a known capacity. null if none has one. */
 export const usableBatteryKwh = (batteries: BatteryState[]): number | null => {
   const known = batteries.filter((b) => b.capacityKwh !== null && b.soc !== null);

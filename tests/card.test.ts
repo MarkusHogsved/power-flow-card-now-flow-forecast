@@ -36,7 +36,21 @@ describe("card", () => {
     const card = await mount(houseConfig);
     expect(root(card).querySelector(".title")?.textContent).toBe("Running on battery");
     expect(root(card).querySelector(".subtitle")?.textContent).toContain("1.95 kW");
-    expect(root(card).querySelector(".price")?.textContent).toContain("1.23 SEK");
+    const price = root(card).querySelector(".price")?.textContent?.replace(/\s+/g, " ");
+    expect(price).toContain("1.23");
+    expect(price).toContain("SEK/kWh");
+  });
+
+  test("battery bank shows discharge and charge separately, not a net figure", async () => {
+    const card = await mount(houseConfig, { ...eveningStates, "sensor.anker_charge": "1210" });
+    const head = root(card).querySelector(".bank .row b")?.textContent?.replace(/\s+/g, " ");
+    expect(head).toContain("↑ 1.95 kW");
+    expect(head).toContain("↓ 1.21 kW");
+  });
+
+  test("Flow leaves an inside-home battery out of the Sankey", async () => {
+    const card = await mount({ ...houseConfig, default_view: "flow" }, { ...eveningStates, "sensor.anker_charge": "1210" });
+    expect(root(card).querySelector("svg.sankey")?.textContent).not.toContain("Charging Anker");
   });
 
   test("starts on Now; a running large load gets a tile, idle ones do not", async () => {
