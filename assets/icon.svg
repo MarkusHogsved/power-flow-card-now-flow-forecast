@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Now / Flow / Forecast icon: a three-way view switch over a power-flow
+       line that continues as a dashed forecast. Same tile style as the other
+       MarkusHogsved HACS repos (LoadCast, multibattery). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E3B57"/>
+      <stop offset="1" stop-color="#0F7C77"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background tile -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg)"/>
+
+  <!-- View switch: three segments, the first selected -->
+  <rect x="88" y="108" width="336" height="64" rx="32" fill="#FFFFFF" fill-opacity="0.16"/>
+  <rect x="96" y="116" width="104" height="48" rx="24" fill="#FFFFFF"/>
+  <circle cx="256" cy="140" r="9" fill="#FFFFFF" fill-opacity="0.7"/>
+  <circle cx="368" cy="140" r="9" fill="#FFFFFF" fill-opacity="0.7"/>
+
+  <!-- Measured flow (solid) running into the forecast (dashed amber) -->
+  <path d="M100 360 C 150 360, 160 290, 214 290 C 254 290, 262 330, 300 330"
+        fill="none" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M300 330 C 340 330, 352 262, 412 262"
+        fill="none" stroke="#FFB547" stroke-width="22" stroke-linecap="round" stroke-dasharray="2 34"/>
+  <circle cx="300" cy="330" r="20" fill="#4FC1B0" stroke="#FFFFFF" stroke-width="8"/>
+
+  <!-- Battery at the bottom left -->
+  <rect x="100" y="396" width="64" height="30" rx="8" fill="none" stroke="#FFFFFF" stroke-width="8"/>
+  <rect x="164" y="404" width="8" height="14" rx="2" fill="#FFFFFF"/>
+  <rect x="108" y="404" width="34" height="14" rx="3" fill="#4FC1B0"/>
+</svg>

@@ -1,0 +1,134 @@
+<p align="center"><img src="https://raw.githubusercontent.com/MarkusHogsved/power-flow-card-now-flow-forecast/main/assets/icon.png" width="128" alt="Power Flow Card - Now / Flow / Forecast"></p>
+
+# Power Flow Card – Now / Flow / Forecast
+
+**A home energy card for Home Assistant with three views:**
+
+- **Now** – what is happening right now: power flowing between solar, grid,
+  home and batteries, every battery's charge level, the large loads that are
+  running, and phase currents against the main fuse.
+- **Flow** – where every watt comes from and where it goes, as a Sankey
+  diagram, plus battery status and today's solar, bought and sold energy.
+- **Forecast** – will the batteries last? Home demand for the next 24 hours
+  from [LoadCast](https://github.com/MarkusHogsved/LoadCast) (with its
+  uncertainty band), compared with the usable energy in your batteries until
+  solar takes over.
+
+A status line above the views always answers the first question – *are we
+buying from the grid?* – and shows the spot price.
+
+Every entity is configured; nothing is tied to a particular inverter or
+brand. Only `home` is required. Everything you leave out (solar, grid,
+batteries, loads, phases, LoadCast) simply does not appear.
+
+## Installation (HACS)
+
+1. HACS → ⋮ → *Custom repositories* → add
+   `https://github.com/MarkusHogsved/power-flow-card-now-flow-forecast`,
+   type *Dashboard*.
+2. Install **Power Flow Card - Now / Flow / Forecast** and reload the browser.
+
+## Configuration
+
+```yaml
+type: custom:power-flow-card-now-flow-forecast
+default_view: now            # now | flow | forecast
+home:
+  entity: sensor.home_power
+solar:
+  entity: sensor.solar_power
+  today_energy: sensor.solar_energy_today
+  forecast_tomorrow: sensor.solcast_pv_forecast_forecast_tomorrow
+  forecast_entities:          # Solcast sensors with detailedForecast
+    - sensor.solcast_pv_forecast_forecast_today
+    - sensor.solcast_pv_forecast_forecast_tomorrow
+grid:
+  entity: sensor.grid_power   # positive = import
+  price: sensor.nordpool_kwh_se3_sek_3_10_025
+  today_import: sensor.grid_import_today
+  today_export: sensor.grid_export_today
+batteries:
+  - name: Growatt
+    state_of_charge: sensor.growatt_battery_soc
+    entity: sensor.growatt_battery_power   # positive = charging
+    capacity_kwh: 60
+    reserve_soc: 10
+  - name: Victron
+    state_of_charge: sensor.victron_soc
+    entity: sensor.victron_battery_power
+  - name: Anker
+    state_of_charge: sensor.anker_soc
+large_loads:                  # only shown while running
+  - name: EV
+    entity: sensor.ev_charger_power
+    icon: mdi:car-electric
+    threshold: 100
+  - name: Water heater
+    entity: sensor.water_heater_power
+    icon: mdi:water-boiler
+  - name: Washing machine
+    entity: sensor.washing_machine_power
+    icon: mdi:washing-machine
+loads:                        # always listed under "Other"
+  - name: Garage
+    entity: sensor.garage_power
+  - name: Workshop
+    entity: sensor.workshop_power
+phases:
+  - sensor.current_l1
+  - sensor.current_l2
+  - sensor.current_l3
+fuse_current: 25
+loadcast:
+  forecast: sensor.loadcast_forecast_next_24_h
+  error: sensor.loadcast_forecast_error_yesterday
+```
+
+### Options
+
+| Key | Description |
+|---|---|
+| `home.entity` | **Required.** Total home consumption (W or kW). |
+| `default_view` | View shown first: `now` (default), `flow` or `forecast`. The last view you picked is remembered per device. |
+| `view_key` | Give each card its own key if you have several on one dashboard, so they remember their views separately. |
+| `solar.entity` | Solar production power. |
+| `solar.today_energy` | Energy produced today (kWh). |
+| `solar.forecast_tomorrow` | Forecast total for tomorrow (kWh). |
+| `solar.forecast_entities` | Sensors with a Solcast-style `detailedForecast` attribute. Used to find the hour when solar (P10, the cautious estimate) covers the forecast demand. |
+| `grid.entity` | Grid power, positive = import. `invert_state: true` if yours is the other way round. |
+| `grid.price` | Current electricity price. |
+| `grid.today_import` / `grid.today_export` | Energy bought / sold today (kWh). |
+| `batteries[]` | `state_of_charge` (required), `entity` (power, positive = charging; `invert_state` flips it), `name`, `icon`, `capacity_kwh` and `reserve_soc` (needed for *Will the battery last?*). |
+| `large_loads[]` | `entity`, `name`, `icon`, `color`, `threshold` (W, default 30). Shown under *Running now* only at or above the threshold. |
+| `loads[]` | `entity`, `name`. Always listed under *Other*, together with *Rest of home* (home minus all configured loads). |
+| `phases` | Phase current sensors (A), in order L1, L2, L3. |
+| `fuse_current` | Main fuse in A, default 25. |
+| `loadcast.forecast` | LoadCast *forecast next 24 h* sensor (attribute `forecast`). |
+| `loadcast.error` | LoadCast *forecast error yesterday* sensor (%). |
+
+Clicking a node, battery, load or tile opens Home Assistant's more-info
+dialog for that entity.
+
+## Development
+
+```sh
+npm ci
+npm test          # vitest (jsdom), TZ=Europe/Stockholm
+npm run typecheck
+npm run build     # dist/power-flow-card-now-flow-forecast.js
+```
+
+Logic lives in pure functions (`src/model.ts`, `src/sankey.ts`,
+`src/forecast.ts`) with tests in `tests/`; the views in `src/views/` only
+render. UI strings are in `src/strings.ts`.
+
+- **Validate** (every push and PR): type check, tests and build; HACS
+  validation on `main`.
+- **Release**: bumping `version` in `package.json` on `main` builds the card
+  and publishes a GitHub release `v<version>` with the `.js` attached, which
+  HACS installs. Release notes come from `CHANGELOG.md`. Keep `VERSION` in
+  `src/power-flow-card-now-flow-forecast.ts` in step (a test checks it).
+
+## License
+
+MIT. See `LICENSE`.

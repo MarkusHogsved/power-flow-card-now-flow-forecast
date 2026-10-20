@@ -1,0 +1,6 @@
+{
+  "name": "Power Flow Card - Now / Flow / Forecast",
+  "filename": "power-flow-card-now-flow-forecast.js",
+  "homeassistant": "2026.1.0",
+  "render_readme": true
+}
