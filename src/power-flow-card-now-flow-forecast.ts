@@ -10,7 +10,7 @@ import { renderForecast } from "./views/forecast";
 import { renderNow } from "./views/now";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 const VIEWS: ViewName[] = ["now", "flow", "forecast"];
 
 const storageKey = (config: CardConfig): string => `${CARD_TYPE}:view:${config.view_key ?? "default"}`;
@@ -89,7 +89,8 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
         ${model.price !== null
           ? html`<div class="price" @click=${() => this._moreInfo(this._config?.grid?.price)}>
               ${t("price")}
-              <b>${formatNumber(hass, model.price, 2)} ${model.priceUnit.split("/")[0]}</b>
+              <b>${formatNumber(hass, model.price, 2)}</b>
+              <span>${model.priceUnit}</span>
             </div>`
           : nothing}
       </div>

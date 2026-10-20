@@ -11,8 +11,9 @@
   diagram, plus battery status and today's solar, bought and sold energy.
 - **Forecast** – will the batteries last? Home demand for the next 24 hours
   from [LoadCast](https://github.com/MarkusHogsved/LoadCast) (with its
-  uncertainty band), compared with the usable energy in your batteries until
-  solar takes over.
+  uncertainty band). What the batteries must supply – demand minus the
+  cautious (P10) solar forecast, hour by hour, until solar takes over – is
+  compared with the usable energy above each battery's reserve.
 
 A status line above the views always answers the first question – *are we
 buying from the grid?* – and shows the spot price.
@@ -48,16 +49,20 @@ grid:
   today_import: sensor.grid_import_today
   today_export: sensor.grid_export_today
 batteries:
-  - name: Growatt
+  - name: Solar battery
     state_of_charge: sensor.growatt_battery_soc
-    entity: sensor.growatt_battery_power   # positive = charging
+    charge_entity: [sensor.bms_1_charge_power, sensor.bms_2_charge_power]
+    discharge_entity: [sensor.bms_1_discharge_power, sensor.bms_2_discharge_power]
     capacity_kwh: 60
     reserve_soc: 10
-  - name: Victron
+  - name: UPS basement
     state_of_charge: sensor.victron_soc
-    entity: sensor.victron_battery_power
-  - name: Anker
+    entity: sensor.victron_battery_power   # positive = charging
+    inside_home: true
+  - name: UPS garage
     state_of_charge: sensor.anker_soc
+    entity: sensor.anker_charger_plug_power
+    inside_home: true
 large_loads:                  # only shown while running
   - name: EV
     entity: sensor.ev_charger_power
@@ -98,7 +103,8 @@ loadcast:
 | `grid.entity` | Grid power, positive = import. `invert_state: true` if yours is the other way round. |
 | `grid.price` | Current electricity price. |
 | `grid.today_import` / `grid.today_export` | Energy bought / sold today (kWh). |
-| `batteries[]` | `state_of_charge` (required), `entity` (power, positive = charging; `invert_state` flips it), `name`, `icon`, `capacity_kwh` and `reserve_soc` (needed for *Will the battery last?*). |
+| `batteries[]` | `state_of_charge` (required), `entity` (power, positive = charging; one entity or a list that is summed; `invert_state` flips it) or `charge_entity` + `discharge_entity` (both positive, each one entity or a list), `name`, `icon`, `capacity_kwh` and `reserve_soc` (needed for *Will the battery last?*). |
+| `batteries[].inside_home` | `true` for a battery that charges from the home's own consumption, e.g. a UPS on a socket. Its level and power are shown, but it is left out of the flows and the Sankey, so its charging is not counted twice. |
 | `large_loads[]` | `entity`, `name`, `icon`, `color`, `threshold` (W, default 30). Shown under *Running now* only at or above the threshold. |
 | `loads[]` | `entity`, `name`. Always listed under *Other*, together with *Rest of home* (home minus all configured loads). |
 | `phases` | Phase current sensors (A), in order L1, L2, L3. |

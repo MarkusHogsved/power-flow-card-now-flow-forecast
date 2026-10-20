@@ -22,7 +22,7 @@ export const houseConfig: CardConfig = {
   batteries: [
     { name: "Growatt", state_of_charge: "sensor.growatt_soc", entity: "sensor.growatt_power", capacity_kwh: 60, reserve_soc: 10 },
     { name: "Victron", state_of_charge: "sensor.victron_soc", entity: "sensor.victron_power" },
-    { name: "Anker", state_of_charge: "sensor.anker_soc" },
+    { name: "Anker", state_of_charge: "sensor.anker_soc", entity: "sensor.anker_charge", inside_home: true },
   ],
   large_loads: [
     { name: "EV", entity: "sensor.ev", icon: "mdi:car-electric", threshold: 100 },
@@ -47,6 +47,7 @@ export const eveningStates: Record<string, StateSpec> = {
   "sensor.victron_soc": ["86", { unit_of_measurement: "%" }],
   "sensor.victron_power": "-265",
   "sensor.anker_soc": ["31", { unit_of_measurement: "%" }],
+  "sensor.anker_charge": "0",
   "sensor.ev": "0",
   "sensor.water_heater": "0",
   "sensor.washer": "2.5",

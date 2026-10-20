@@ -37,14 +37,26 @@ export interface GridConfig {
   today_export?: string;
 }
 
+/** One entity, or several whose values are summed (e.g. two BMS packs). */
+export type EntityList = string | string[];
+
 export interface BatteryConfig {
   name?: string;
   icon?: string;
   /** State of charge (%). */
   state_of_charge: string;
   /** Battery power. Positive = charging, negative = discharging (flip with invert_state). */
-  entity?: string;
+  entity?: EntityList;
+  /** Alternative to `entity`: separate charge and discharge power, both positive. */
+  charge_entity?: EntityList;
+  discharge_entity?: EntityList;
   invert_state?: boolean;
+  /**
+   * The battery charges from (and is measured inside) the home's own
+   * consumption - e.g. a UPS plugged into a socket. Its level and power are
+   * shown, but it is left out of the flows so it is not counted twice.
+   */
+  inside_home?: boolean;
   /** Usable capacity in kWh - enables "will the battery last" in Forecast. */
   capacity_kwh?: number;
   /** SOC the battery never goes below (%), default 0. */

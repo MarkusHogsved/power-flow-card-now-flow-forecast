@@ -20,10 +20,12 @@ const ribbonPath = (y0: number, y1: number, y2: number, y3: number): string => {
 export const renderFlow = (ctx: ViewContext) => {
   const { hass, config, model: m } = ctx;
 
+  // Inside-home batteries are already part of home consumption - leave them out.
+  const flowBatteries = m.batteries.filter((b) => !b.insideHome);
   const sources: SankeyNode[] = [
     { key: "solar", label: t("node.solar"), value: m.solarW, color: COLORS.solar },
     { key: "grid", label: t("node.grid"), value: m.gridImportW, color: COLORS.grid },
-    ...m.batteries.map((b, i) => ({
+    ...flowBatteries.map((b, i) => ({
       key: `battery-${i}`,
       label: b.name,
       value: Math.max(-b.powerW, 0),
@@ -34,7 +36,7 @@ export const renderFlow = (ctx: ViewContext) => {
     ...m.running.map((l) => ({ key: l.entity, label: l.name, value: l.powerW, color: l.color })),
     { key: "rest", label: t("rest_of_home"), value: m.restW, color: "#C9D0D6" },
     ...m.loads.map((l) => ({ key: l.entity, label: l.name, value: l.powerW, color: "#C9D0D6" })),
-    ...m.batteries.map((b, i) => ({
+    ...flowBatteries.map((b, i) => ({
       key: `charge-${i}`,
       label: t("flow.charging", { name: b.name }),
       value: Math.max(b.powerW, 0),

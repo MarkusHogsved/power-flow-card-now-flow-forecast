@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { readLoadCast, readSolarP10ByHour, solarTakeoverIndex, sumKwh, usableBatteryKwh } from "../src/forecast";
+import { netDemandKwh, readLoadCast, readSolarP10ByHour, solarTakeoverIndex, sumKwh, usableBatteryKwh } from "../src/forecast";
 import type { BatteryState } from "../src/model";
 import { makeHass } from "./helpers";
 
@@ -54,6 +54,18 @@ describe("solar takeover", () => {
   test("no solar data -> no takeover", () => {
     expect(solarTakeoverIndex(hours, new Map())).toBeNull();
   });
+
+  test("net demand subtracts solar per hour and never goes negative", () => {
+    const pv = readSolarP10ByHour(solar, ["sensor.solcast_tomorrow"]);
+    const net = netDemandKwh(hours, pv);
+    // 08-11 solar covers 1 kWh/h, 11-15 all of it; nothing else
+    const covered = hours.reduce((s, h) => {
+      const hr = h.start.getHours();
+      return s + (hr >= 11 && hr < 15 ? h.kwh : hr >= 8 && hr < 11 ? 1 : 0);
+    }, 0);
+    expect(net).toBeCloseTo(sumKwh(hours) - covered);
+    expect(netDemandKwh(hours, new Map())).toBeCloseTo(sumKwh(hours));
+  });
 });
 
 describe("usableBatteryKwh", () => {
@@ -65,6 +77,7 @@ describe("usableBatteryKwh", () => {
     capacityKwh,
     reserveSoc,
     stateOfChargeEntity: "sensor.b",
+    insideHome: false,
   });
 
   test("energy above the reserve, batteries without capacity ignored", () => {

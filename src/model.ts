@@ -1,4 +1,4 @@
-import { friendlyName, readNumber, readPowerW } from "./hass";
+import { friendlyName, readNumber, readPowerSumW, readPowerW } from "./hass";
 import type { CardConfig, HomeAssistant } from "./types";
 
 /** Below this, a power reading counts as zero (W). */
@@ -27,6 +27,8 @@ export interface BatteryState {
   capacityKwh: number | null;
   reserveSoc: number;
   stateOfChargeEntity: string;
+  /** Measured inside home consumption: shown, but left out of the flows. */
+  insideHome: boolean;
 }
 
 export interface LoadState {
@@ -55,6 +57,7 @@ export interface Model {
   gridExportW: number;
   homeW: number;
   batteries: BatteryState[];
+  /** Charge/discharge of the batteries in the flows (inside-home batteries excluded). */
   batteryChargeW: number;
   batteryDischargeW: number;
   /** Large loads at or above their threshold, highest power first. */
@@ -120,7 +123,11 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
   const homeW = Math.max(readPowerW(hass, config.home.entity) ?? 0, 0);
 
   const batteries: BatteryState[] = (config.batteries ?? []).map((b) => {
-    const raw = (readPowerW(hass, b.entity) ?? 0) * (b.invert_state ? -1 : 1);
+    const signed =
+      b.charge_entity !== undefined || b.discharge_entity !== undefined
+        ? (readPowerSumW(hass, b.charge_entity) ?? 0) - (readPowerSumW(hass, b.discharge_entity) ?? 0)
+        : (readPowerSumW(hass, b.entity) ?? 0);
+    const raw = signed * (b.invert_state ? -1 : 1);
     return {
       name: b.name ?? friendlyName(hass, b.state_of_charge),
       icon: b.icon ?? "mdi:battery-outline",
@@ -129,10 +136,12 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
       capacityKwh: b.capacity_kwh ?? null,
       reserveSoc: b.reserve_soc ?? 0,
       stateOfChargeEntity: b.state_of_charge,
+      insideHome: b.inside_home ?? false,
     };
   });
-  const batteryChargeW = batteries.reduce((s, b) => s + Math.max(b.powerW, 0), 0);
-  const batteryDischargeW = batteries.reduce((s, b) => s + Math.max(-b.powerW, 0), 0);
+  const inFlows = batteries.filter((b) => !b.insideHome);
+  const batteryChargeW = inFlows.reduce((s, b) => s + Math.max(b.powerW, 0), 0);
+  const batteryDischargeW = inFlows.reduce((s, b) => s + Math.max(-b.powerW, 0), 0);
 
   const toLoad = (l: NonNullable<CardConfig["loads"]>[number], i: number): LoadState => ({
     name: l.name ?? friendlyName(hass, l.entity),
