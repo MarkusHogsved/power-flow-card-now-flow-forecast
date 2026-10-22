@@ -2,7 +2,7 @@
 
 # Power Flow Card – Now / Flow / Forecast
 
-**A home energy card for Home Assistant with three views:**
+**A home energy card for Home Assistant with four views:**
 
 - **Now** – what is happening right now: power flowing between solar, grid,
   home and batteries, every battery's charge level, the large loads that are
@@ -14,6 +14,11 @@
   uncertainty band). What the batteries must supply – demand minus the
   cautious (P10) solar forecast, hour by hour, until solar takes over – is
   compared with the usable energy above each battery's reserve.
+- **Review** – how did the last 12 or 24 hours go? Energy bought and sold
+  and what it cost, solar, the main battery's lowest level, a chart of the
+  hourly price with grid import and battery level, and *What happened*:
+  every battery charge and large-load run with the price paid against the
+  cheapest window of the same length in the period.
 
 A status line above the views always answers the first question – *are we
 buying from the grid?* – and shows the spot price.
@@ -33,7 +38,7 @@ batteries, loads, phases, LoadCast) simply does not appear.
 
 ```yaml
 type: custom:power-flow-card-now-flow-forecast
-default_view: now            # now | flow | forecast
+default_view: now            # now | flow | forecast | review
 home:
   entity: sensor.home_power
 solar:
@@ -94,7 +99,7 @@ loadcast:
 | Key | Description |
 |---|---|
 | `home.entity` | **Required.** Total home consumption (W or kW). |
-| `default_view` | View shown first: `now` (default), `flow` or `forecast`. The last view you picked is remembered per device. |
+| `default_view` | View shown first: `now` (default), `flow`, `forecast` or `review`. The last view you picked is remembered per device. |
 | `view_key` | Give each card its own key if you have several on one dashboard, so they remember their views separately. |
 | `solar.entity` | Solar production power. |
 | `solar.today_energy` | Energy produced today (kWh). |
@@ -115,6 +120,27 @@ loadcast:
 Clicking a node, battery, load or tile opens Home Assistant's more-info
 dialog for that entity.
 
+### Review
+
+Review reads the recorder history of the configured entities (grid, price,
+solar, batteries, large loads, phases) when you open it, and again every
+5 minutes while it is open. There is nothing extra to configure; the
+recorder must keep at least 24 hours (the default is 10 days).
+
+- **Bought / sold** integrate grid power; cost uses the price sensor's
+  history. The headline compares your average buying price with the
+  period's average price.
+- **What happened** lists battery charging (above 500 W for at least
+  10 minutes) and large-load runs (at or above their `threshold`). Runs of
+  1 kWh or more get their own entry; smaller ones of the same battery or
+  load are summed in one. The price is that of the energy that came from
+  the grid (at most the grid import at each moment), compared with the
+  cheapest window of the same length in the period: within 10 % is green,
+  50 % or more above is red. Charging mostly from solar or battery gets no
+  price verdict.
+- **Peak grid** is the highest import; the highest phase is a 5-minute
+  average, since a main fuse tolerates brief peaks.
+
 ## Development
 
 ```sh
@@ -125,7 +151,7 @@ npm run build     # dist/power-flow-card-now-flow-forecast.js
 ```
 
 Logic lives in pure functions (`src/model.ts`, `src/sankey.ts`,
-`src/forecast.ts`) with tests in `tests/`; the views in `src/views/` only
+`src/forecast.ts`, `src/review.ts`) with tests in `tests/`; the views in `src/views/` only
 render. UI strings are in `src/strings.ts`.
 
 - **Validate** (every push and PR): type check, tests and build; HACS

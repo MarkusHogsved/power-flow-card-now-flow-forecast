@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+- New fourth view **Review**: how the last 12 or 24 hours went, from the
+  recorder history of the entities already configured. Bought and sold
+  energy with cost and revenue, average buying price against the period's
+  average, solar, the main battery's lowest level, a chart of the hourly
+  price (cheap / mid / expensive) with grid import, battery level and the
+  charge and load runs, and *What happened*: each battery charge and
+  large-load run with the price paid against the cheapest window of the
+  same length. Peak grid import and the highest phase (5-minute average)
+  against the fuse. Fetched when opened and every 5 minutes while open.
+
 ## 0.2.0
 
 - Batteries can sum several entities: `entity` accepts a list, or give

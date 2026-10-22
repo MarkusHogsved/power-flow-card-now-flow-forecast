@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import pkg from "../package.json";
 import { PowerFlowCardNowFlowForecast, VERSION } from "../src/power-flow-card-now-flow-forecast";
-import type { CardConfig } from "../src/types";
+import type { CardConfig, HomeAssistant } from "../src/types";
 import { eveningStates, houseConfig, makeHass } from "./helpers";
 
 const mount = async (config: CardConfig, states = eveningStates) => {
@@ -83,9 +83,63 @@ describe("card", () => {
     expect(root(card).textContent).toContain("Solar tomorrow");
   });
 
-  test("a minimal config (home only) renders all three views", async () => {
+  test("Review fetches history once, shows what happened and switches to 12 h", async () => {
+    const now = Date.now() / 1000;
+    const calls: Record<string, unknown>[] = [];
+    const history = {
+      "sensor.grid": [{ s: "300", lu: now - 24 * 3600 }, { s: "11400", lu: now - 6 * 3600 }, { s: "300", lu: now - 2 * 3600 }],
+      "sensor.price": [{ s: "0.9", lu: now - 24 * 3600 }, { s: "0.34", lu: now - 6 * 3600 }, { s: "0.9", lu: now - 2 * 3600 }],
+      "sensor.growatt_power": [{ s: "0", lu: now - 24 * 3600 }, { s: "11000", lu: now - 6 * 3600 }, { s: "0", lu: now - 2 * 3600 }],
+      "sensor.growatt_soc": [{ s: "46", lu: now - 24 * 3600 }, { s: "100", lu: now - 2 * 3600 }],
+    };
+    const card = await mount(houseConfig);
+    const hass = makeHass(eveningStates);
+    hass.callWS = (async (msg: Record<string, unknown>) => {
+      calls.push(msg);
+      return history;
+    }) as HomeAssistant["callWS"];
+    card.hass = hass;
+    tab(card, "Review").click();
+    await card.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await card.updateComplete;
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ type: "history/history_during_period", minimal_response: true, no_attributes: true });
+    const text = root(card).textContent?.replace(/\s+/g, " ") ?? "";
+    expect(text).toContain("Bought");
+    expect(text).toContain("Growatt charged");
+    expect(text).toContain("46 → 100 %");
+    expect(root(card).querySelector("svg.chart")).not.toBeNull();
+
+    // a new hass object within 5 min does not fetch again
+    card.hass = { ...hass };
+    await card.updateComplete;
+    expect(calls).toHaveLength(1);
+
+    [...root(card).querySelectorAll<HTMLButtonElement>(".pills button")].find((b) => b.textContent?.trim() === "12 h")!.click();
+    await card.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toHaveLength(2);
+    expect(localStorage.getItem("power-flow-card-now-flow-forecast:review-hours:default")).toBe("12");
+  });
+
+  test("Review shows the error when history cannot be loaded", async () => {
+    const card = await mount({ ...houseConfig, default_view: "review" });
+    const hass = makeHass(eveningStates);
+    hass.callWS = (async () => {
+      throw new Error("Unauthorized");
+    }) as HomeAssistant["callWS"];
+    card.hass = hass;
+    await card.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await card.updateComplete;
+    expect(root(card).textContent).toContain("Could not load history: Unauthorized");
+  });
+
+  test("a minimal config (home only) renders all four views", async () => {
     const card = await mount({ type: "x", home: { entity: "sensor.home" } });
-    for (const label of ["Now", "Flow", "Forecast"]) {
+    for (const label of ["Now", "Flow", "Forecast", "Review"]) {
       tab(card, label).click();
       await card.updateComplete;
       expect(root(card).querySelector(".view")).not.toBeNull();

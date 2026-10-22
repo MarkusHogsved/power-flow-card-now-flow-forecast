@@ -16,7 +16,7 @@ export const COLORS = {
 };
 
 /** Palette for large loads without their own color, in config order. */
-const LOAD_PALETTE = ["#B39DF0", "#E0A93B", "#6CA8E8", "#E57F84", "#7FC97F", "#F0C05A"];
+export const LOAD_PALETTE = ["#B39DF0", "#E0A93B", "#6CA8E8", "#E57F84", "#7FC97F", "#F0C05A"];
 
 export interface BatteryState {
   name: string;
