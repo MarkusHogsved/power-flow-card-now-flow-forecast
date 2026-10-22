@@ -20,6 +20,14 @@
   every battery charge and large-load run with the price paid against the
   cheapest window of the same length in the period.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/MarkusHogsved/power-flow-card-now-flow-forecast/main/docs/images/now.png" width="24%" alt="Now view">
+  <img src="https://raw.githubusercontent.com/MarkusHogsved/power-flow-card-now-flow-forecast/main/docs/images/flow.png" width="24%" alt="Flow view">
+  <img src="https://raw.githubusercontent.com/MarkusHogsved/power-flow-card-now-flow-forecast/main/docs/images/forecast.png" width="24%" alt="Forecast view">
+  <img src="https://raw.githubusercontent.com/MarkusHogsved/power-flow-card-now-flow-forecast/main/docs/images/review.png" width="24%" alt="Review view">
+</p>
+<p align="center"><sub>Now · Flow · Forecast · Review – a real house on an October morning: 60 kWh home battery, two UPS batteries, water heater running, charged overnight in the cheapest hours.</sub></p>
+
 A status line above the views always answers the first question – *are we
 buying from the grid?* – and shows the spot price.
 
@@ -121,6 +129,8 @@ Clicking a node, battery, load or tile opens Home Assistant's more-info
 dialog for that entity.
 
 ### Review
+
+<p align="center"><img src="https://raw.githubusercontent.com/MarkusHogsved/power-flow-card-now-flow-forecast/main/docs/images/review.png" width="420" alt="Review: bought 43 kWh for 16 SEK, the night charge at the cheapest price and an EV top-up at 4.3 times the cheapest price"></p>
 
 Review reads the recorder history of the configured entities (grid, price,
 solar, batteries, large loads, phases) when you open it, and again every

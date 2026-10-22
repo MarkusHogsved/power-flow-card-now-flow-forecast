@@ -11,6 +11,7 @@
   large-load run with the price paid against the cheapest window of the
   same length. Peak grid import and the highest phase (5-minute average)
   against the fuse. Fetched when opened and every 5 minutes while open.
+- README: screenshots of all four views.
 
 ## 0.2.0
 

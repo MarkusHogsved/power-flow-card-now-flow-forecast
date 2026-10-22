@@ -97,8 +97,14 @@ const chart = (r: Review, hours: ReviewHours) => {
 };
 
 const legend = (r: Review, battery: string | undefined) => {
+  // Batteries share one colour: one "charging" entry, then each load
   const names = new Map<string, string>();
-  for (const m of r.marks) if (m.name !== "export") names.set(m.name, m.color);
+  const batteryNames = new Set(r.events.filter((e) => e.kind === "battery").map((e) => e.name));
+  for (const m of r.marks) {
+    if (m.name === "export") continue;
+    if (batteryNames.has(m.name)) names.set(t("review.legend.charging"), m.color);
+    else names.set(m.name, m.color);
+  }
   return html`<div class="legend">
     ${(["cheap", "mid", "expensive"] as const).map(
       (k) => html`<span><i style="background: ${PRICE_COLORS[k]}80"></i>${t(`review.legend.${k}`)}</span>`,
@@ -260,7 +266,7 @@ export const renderReview = (ctx: ViewContext, state: ReviewState, setHours: (h:
               <b>${formatEnergy(hass, r.solarKwh)}</b><span class="muted"></span></div>`
           : nothing}
         ${r.lowestSoc
-          ? html`<div class="stat"><span class="muted">${t("review.tile.lowest", { name: r.lowestSoc.name })}</span>
+          ? html`<div class="stat"><span class="muted">${t("review.tile.lowest")}</span>
               <b>${formatPercent(hass, r.lowestSoc.v)}</b><span class="muted">${hhmm(r.lowestSoc.t)}</span></div>`
           : nothing}
       </div>
