@@ -9,9 +9,11 @@ export interface HomeAssistant {
   states: Record<string, HassEntity>;
   locale?: { language?: string };
   language?: string;
+  /** Websocket call - used by Review to read recorder history. */
+  callWS?: <T>(msg: Record<string, unknown>) => Promise<T>;
 }
 
-export type ViewName = "now" | "flow" | "forecast";
+export type ViewName = "now" | "flow" | "forecast" | "review";
 
 export interface SolarConfig {
   /** Solar production power (W/kW). */

@@ -1,6 +1,8 @@
-import { LitElement, html, nothing } from "lit";
+import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { formatNumber, formatPower } from "./hass";
+import { buildReviewInput, fetchHistory, reviewEntities } from "./history";
 import { computeModel, type Model } from "./model";
+import { computeReview } from "./review";
 import { t } from "./strings";
 import { styles } from "./styles";
 import type { CardConfig, HomeAssistant, ViewName } from "./types";
@@ -8,12 +10,23 @@ import type { ViewContext } from "./views/context";
 import { renderFlow } from "./views/flow";
 import { renderForecast } from "./views/forecast";
 import { renderNow } from "./views/now";
+import { renderReview, type ReviewHours, type ReviewState } from "./views/review";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.2.0";
-const VIEWS: ViewName[] = ["now", "flow", "forecast"];
+export const VERSION = "0.3.0";
+const VIEWS: ViewName[] = ["now", "flow", "forecast", "review"];
+/** Review history is fetched again when older than this. */
+const REVIEW_MAX_AGE_MS = 5 * 60_000;
 
-const storageKey = (config: CardConfig): string => `${CARD_TYPE}:view:${config.view_key ?? "default"}`;
+const storageKey = (config: CardConfig, what = "view"): string => `${CARD_TYPE}:${what}:${config.view_key ?? "default"}`;
+
+const loadHours = (config: CardConfig): ReviewHours => {
+  try {
+    return localStorage.getItem(storageKey(config, "review-hours")) === "12" ? 12 : 24;
+  } catch {
+    return 24;
+  }
+};
 
 const loadView = (config: CardConfig): ViewName => {
   try {
@@ -32,11 +45,15 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
     hass: { attribute: false },
     _config: { state: true },
     _view: { state: true },
+    _review: { state: true },
   };
 
   hass?: HomeAssistant;
   private _config?: CardConfig;
   private _view: ViewName = "now";
+  private _review: ReviewState = { hours: 24, loading: false };
+  private _reviewFetchedAt = 0;
+  private _reviewRequest = 0;
 
   setConfig(config: CardConfig): void {
     if (!config?.home?.entity) throw new Error("home.entity is required");
@@ -45,6 +62,8 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
     }
     this._config = config;
     this._view = loadView(config);
+    this._review = { hours: loadHours(config), loading: false };
+    this._reviewFetchedAt = 0;
   }
 
   getCardSize(): number {
@@ -61,6 +80,47 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
       if (this._config) localStorage.setItem(storageKey(this._config), view);
     } catch {
       // not persisted - fine
+    }
+  }
+
+  private _setHours = (hours: ReviewHours): void => {
+    if (hours === this._review.hours) return;
+    this._review = { hours, loading: false };
+    this._reviewFetchedAt = 0;
+    try {
+      if (this._config) localStorage.setItem(storageKey(this._config, "review-hours"), String(hours));
+    } catch {
+      // not persisted - fine
+    }
+  };
+
+  // Starting the fetch here (not in updated) sets the loading state in the
+  // same render instead of scheduling another one.
+  protected override willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    if (this._view !== "review" || !this.hass?.callWS || !this._config || this._review.loading) return;
+    if (Date.now() - this._reviewFetchedAt < REVIEW_MAX_AGE_MS) return;
+    void this._loadReview();
+  }
+
+  private async _loadReview(): Promise<void> {
+    const hass = this.hass as HomeAssistant;
+    const config = this._config as CardConfig;
+    const hours = this._review.hours;
+    const request = ++this._reviewRequest;
+    const end = Date.now();
+    const start = end - hours * 3_600_000;
+    this._reviewFetchedAt = end;
+    this._review = { ...this._review, loading: true, error: undefined };
+    try {
+      const history = await fetchHistory(hass, reviewEntities(config), start, end);
+      if (request !== this._reviewRequest) return;
+      const data = computeReview(buildReviewInput(hass, config, history, start, end));
+      this._review = { hours, data, loading: false };
+    } catch (err) {
+      if (request !== this._reviewRequest) return;
+      // keep the last result, if any, and show the error with it
+      this._review = { ...this._review, loading: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -117,7 +177,13 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
             </button>`,
           )}
         </div>
-        ${this._view === "now" ? renderNow(ctx) : this._view === "flow" ? renderFlow(ctx) : renderForecast(ctx)}
+        ${this._view === "now"
+          ? renderNow(ctx)
+          : this._view === "flow"
+            ? renderFlow(ctx)
+            : this._view === "forecast"
+              ? renderForecast(ctx)
+              : renderReview(ctx, this._review, this._setHours)}
       </ha-card>
     `;
   }
@@ -130,7 +196,7 @@ if (!customElements.get(CARD_TYPE)) {
   w.customCards.push({
     type: CARD_TYPE,
     name: "Power Flow Card - Now / Flow / Forecast",
-    description: "Home energy in three views: live flow, where the power goes, and whether the batteries will last.",
+    description: "Home energy in four views: live flow, where the power goes, whether the batteries will last, and how the last day went.",
   });
   console.info(`%c⚡ ${CARD_TYPE} v${VERSION}`, "color: #4FC1B0; font-weight: 600");
 }
