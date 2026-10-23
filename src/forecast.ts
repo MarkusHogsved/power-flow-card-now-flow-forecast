@@ -103,5 +103,42 @@ export const usableBatteryKwh = (batteries: BatteryState[]): number | null => {
   );
 };
 
+/**
+ * Grid energy still expected before `until` (e.g. midnight), hour by hour:
+ * demand minus solar P10, a shortfall drawn from the batteries (above their
+ * reserve) and the rest from the grid, a surplus charging the batteries up
+ * to full. The current hour counts only for the part still ahead. Planned
+ * grid charging is not known here, so it is not included.
+ */
+export const expectedImportKwh = (
+  hours: ForecastHour[],
+  solarP10: Map<number, number>,
+  batteries: BatteryState[],
+  now: Date,
+  until: Date,
+): number => {
+  const known = batteries.filter((b) => b.capacityKwh !== null && b.soc !== null);
+  const room = known.reduce((s, b) => s + ((100 - b.reserveSoc) / 100) * (b.capacityKwh as number), 0);
+  let stored = usableBatteryKwh(known) ?? 0;
+  let grid = 0;
+  for (const h of hours) {
+    const start = h.start.getTime();
+    const end = start + 3_600_000;
+    const from = Math.max(start, now.getTime());
+    const to = Math.min(end, until.getTime());
+    if (to <= from) continue;
+    const share = (to - from) / 3_600_000;
+    const net = (h.kwh - (solarP10.get(start) ?? 0)) * share;
+    if (net > 0) {
+      const fromBattery = Math.min(net, stored);
+      stored -= fromBattery;
+      grid += net - fromBattery;
+    } else {
+      stored = Math.min(stored - net, room);
+    }
+  }
+  return grid;
+};
+
 export const peakIndex = (hours: ForecastHour[]): number =>
   hours.reduce((best, h, i) => (h.kwh > hours[best].kwh ? i : best), 0);

@@ -1,5 +1,6 @@
 import { html, nothing, svg } from "lit";
 import { formatEnergy, formatNumber, formatPercent, formatPower, readNumber } from "../hass";
+import { expectedImportKwh, readLoadCast, readSolarP10ByHour } from "../forecast";
 import { COLORS, type BatteryState, type LoadState } from "../model";
 import { t } from "../strings";
 import type { ViewContext } from "./context";
@@ -75,6 +76,13 @@ export const renderNow = (ctx: ViewContext) => {
   const solarForecast = readNumber(hass, config.solar?.forecast_today);
   const gridToday = readNumber(hass, config.grid?.today_import);
   const gridCost = readNumber(hass, config.grid?.today_cost);
+  // Expected further purchases until midnight, from LoadCast (needs its forecast)
+  const demand = readLoadCast(hass, config.loadcast?.forecast, ctx.now);
+  const midnight = new Date(ctx.now);
+  midnight.setHours(24, 0, 0, 0);
+  const gridExpected = demand.length
+    ? expectedImportKwh(demand, readSolarP10ByHour(hass, config.solar?.forecast_entities), m.batteries, ctx.now, midnight)
+    : null;
   const costUnit = String(hass.states[config.grid?.today_cost ?? ""]?.attributes?.unit_of_measurement ?? "");
 
   return html`
@@ -124,14 +132,18 @@ export const renderNow = (ctx: ViewContext) => {
                 <ha-icon icon="mdi:transmission-tower" style="color: ${COLORS.grid}"></ha-icon>
                 <span>${m.gridExportW > 0 ? "← " : ""}${formatPower(hass, m.gridImportW || m.gridExportW)}</span>
               </div>
-              <div class="node-label grid-label" style="left: 0; top: ${pct(216, BOX_H)}; width: ${pct(76, BOX_W)}">
-                ${t("node.grid")}${gridToday !== null
-                  ? html`<br /><span @click=${() => ctx.moreInfo(config.grid?.today_import)}
+              <div class="node-label grid-label" style="left: 0; top: ${pct(216, BOX_H)}">
+                ${t("node.grid")}${gridToday !== null || gridCost !== null ? html`<br />` : nothing}${gridToday !== null
+                  ? html`<span @click=${() => ctx.moreInfo(config.grid?.today_import)}
                       >${t("grid.today", { energy: formatEnergy(hass, gridToday) })}</span
                     >`
-                  : nothing}${gridCost !== null
-                  ? html`<br /><span @click=${() => ctx.moreInfo(config.grid?.today_cost)}
-                      >${t("grid.cost_today", { cost: `${formatNumber(hass, gridCost, gridCost < 10 ? 2 : 0)}${costUnit ? ` ${costUnit}` : ""}` })}</span
+                  : nothing}${gridToday !== null && gridCost !== null ? " · " : nothing}${gridCost !== null
+                  ? html`<span @click=${() => ctx.moreInfo(config.grid?.today_cost)}
+                      >${`${formatNumber(hass, gridCost, gridCost < 10 ? 2 : 0)}${costUnit ? ` ${costUnit}` : ""}`}</span
+                    >`
+                  : nothing}${gridExpected !== null
+                  ? html`<br /><span @click=${() => ctx.moreInfo(config.loadcast?.forecast)}
+                      >${t("grid.expected", { energy: formatEnergy(hass, gridExpected) })}</span
                     >`
                   : nothing}
               </div>

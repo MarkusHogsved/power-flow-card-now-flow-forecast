@@ -137,7 +137,6 @@ export const styles = css`
   }
   .grid-label {
     white-space: nowrap;
-    text-align: center;
   }
   .bank {
     position: absolute;

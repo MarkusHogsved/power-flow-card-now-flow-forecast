@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { netDemandKwh, readLoadCast, readSolarP10ByHour, solarTakeoverIndex, sumKwh, usableBatteryKwh } from "../src/forecast";
+import { expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, solarTakeoverIndex, sumKwh, usableBatteryKwh } from "../src/forecast";
 import type { BatteryState } from "../src/model";
 import { makeHass } from "./helpers";
 
@@ -90,5 +90,35 @@ describe("usableBatteryKwh", () => {
 
   test("no capacity anywhere -> null", () => {
     expect(usableBatteryKwh([battery(50, null)])).toBeNull();
+  });
+});
+
+describe("expectedImportKwh", () => {
+  const H = 3_600_000;
+  const at = (h: number) => new Date(2026, 9, 23, h, 0);
+  const hours = (from: number, kwh: number[]) =>
+    kwh.map((k, i) => ({ start: at(from + i), kwh: k, p10: k, p90: k }));
+  const battery = (soc: number) => ({
+    name: "B", icon: "", soc, powerW: 0, capacityKwh: 60, reserveSoc: 10, stateOfChargeEntity: "s", insideHome: false,
+  });
+
+  test("a battery that covers the evening means nothing more from the grid", () => {
+    expect(expectedImportKwh(hours(20, [2, 2, 2, 2]), new Map(), [battery(91)], at(20), at(24))).toBe(0);
+  });
+
+  test("shortfall beyond the reserve comes from the grid", () => {
+    // 6 kWh above the 10 % reserve, 8 kWh needed
+    expect(expectedImportKwh(hours(20, [2, 2, 2, 2]), new Map(), [battery(20)], at(20), at(24))).toBeCloseTo(2);
+  });
+
+  test("only the part of the current hour still ahead counts, and nothing after midnight", () => {
+    const now = new Date(at(22).getTime() + H / 2);
+    expect(expectedImportKwh(hours(22, [2, 2, 5]), new Map(), [], now, at(24))).toBeCloseTo(3);
+  });
+
+  test("a solar surplus refills the battery for later hours", () => {
+    const solar = new Map([[at(12).getTime(), 6]]);
+    // 12: +4 kWh into an empty battery, 13: 3 kWh drawn from it
+    expect(expectedImportKwh(hours(12, [2, 3]), solar, [battery(10)], at(12), at(24))).toBe(0);
   });
 });

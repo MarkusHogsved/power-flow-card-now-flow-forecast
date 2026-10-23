@@ -76,7 +76,7 @@ describe("card", () => {
     );
     const labels = [...root(card).querySelectorAll(".node-label")].map((l) => l.textContent?.replace(/\s+/g, ""));
     expect(labels).toContain("Solar35kWhtoday~43kWhforecast");
-    expect(labels).toContain("Grid46kWhtoday42SEK");
+    expect(labels).toContain("Grid46kWh·42SEK");
   });
 
   test("without the optional entities the node labels stay short", async () => {

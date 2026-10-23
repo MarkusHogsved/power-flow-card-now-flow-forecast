@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2
+
+- Now: under the grid node, *~x kWh more* – grid energy still expected
+  before midnight, from LoadCast demand, solar P10 and the batteries'
+  usable energy, hour by hour. Needs `loadcast.forecast`.
+- The grid node's figures are on one line (*41 kWh · 42 SEK*) and the label
+  is left-aligned, so it no longer runs into the battery bank.
+
 ## 0.3.1
 
 - Now: the solar node also shows today's forecast (new `solar.forecast_today`),
