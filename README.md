@@ -126,11 +126,18 @@ loadcast:
 | `loads[]` | `entity`, `name`. Always listed under *Other*, together with *Rest of home* (home minus all configured loads). |
 | `phases` | Phase current sensors (A), in order L1, L2, L3. |
 | `fuse_current` | Main fuse in A, default 25. |
-| `loadcast.forecast` | LoadCast *forecast next 24 h* sensor (attribute `forecast`). |
+| `loadcast.forecast` | LoadCast *forecast next 24 h* sensor (attribute `forecast`). Also gives *~x kWh more* under the grid node in Now: grid energy still expected before midnight (see below). |
 | `loadcast.error` | LoadCast *forecast error yesterday* sensor (%). |
 
 Clicking a node, battery, load or tile opens Home Assistant's more-info
 dialog for that entity.
+
+**Expected purchases (Now, under the grid node).** With LoadCast configured,
+the card runs through the hours left until midnight: forecast demand minus
+solar P10 each hour, a shortfall taken from the batteries above their
+reserve and the rest from the grid, a solar surplus charging the batteries
+up to full. Only batteries with `capacity_kwh` count. Grid charging that an
+automation has planned is not known to the card, so it is not included.
 
 ### Review
 
