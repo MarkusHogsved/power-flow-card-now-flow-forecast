@@ -72,6 +72,10 @@ export const renderNow = (ctx: ViewContext) => {
   const bankOut = m.batteries.reduce((s, b) => s + Math.max(-b.powerW, 0), 0);
   const bankIn = m.batteries.reduce((s, b) => s + Math.max(b.powerW, 0), 0);
   const solarToday = readNumber(hass, config.solar?.today_energy);
+  const solarForecast = readNumber(hass, config.solar?.forecast_today);
+  const gridToday = readNumber(hass, config.grid?.today_import);
+  const gridCost = readNumber(hass, config.grid?.today_cost);
+  const costUnit = String(hass.states[config.grid?.today_cost ?? ""]?.attributes?.unit_of_measurement ?? "");
 
   return html`
     <div class="view">
@@ -102,6 +106,10 @@ export const renderNow = (ctx: ViewContext) => {
               <div class="node-label" style="left: ${pct(250, BOX_W)}; top: ${pct(14, BOX_H)}">
                 ${t("node.solar")}${solarToday !== null
                   ? html`<br />${t("solar.today", { energy: formatEnergy(hass, solarToday) })}`
+                  : nothing}${solarForecast !== null
+                  ? html`<br /><span @click=${() => ctx.moreInfo(config.solar?.forecast_today)}
+                      >${t("solar.forecast_today", { energy: formatEnergy(hass, solarForecast) })}</span
+                    >`
                   : nothing}
               </div>
             `
@@ -116,8 +124,16 @@ export const renderNow = (ctx: ViewContext) => {
                 <ha-icon icon="mdi:transmission-tower" style="color: ${COLORS.grid}"></ha-icon>
                 <span>${m.gridExportW > 0 ? "← " : ""}${formatPower(hass, m.gridImportW || m.gridExportW)}</span>
               </div>
-              <div class="node-label" style="left: 0; top: ${pct(216, BOX_H)}; width: ${pct(76, BOX_W)}; text-align: center">
-                ${t("node.grid")}
+              <div class="node-label grid-label" style="left: 0; top: ${pct(216, BOX_H)}; width: ${pct(76, BOX_W)}">
+                ${t("node.grid")}${gridToday !== null
+                  ? html`<br /><span @click=${() => ctx.moreInfo(config.grid?.today_import)}
+                      >${t("grid.today", { energy: formatEnergy(hass, gridToday) })}</span
+                    >`
+                  : nothing}${gridCost !== null
+                  ? html`<br /><span @click=${() => ctx.moreInfo(config.grid?.today_cost)}
+                      >${t("grid.cost_today", { cost: `${formatNumber(hass, gridCost, gridCost < 10 ? 2 : 0)}${costUnit ? ` ${costUnit}` : ""}` })}</span
+                    >`
+                  : nothing}
               </div>
             `
           : nothing}

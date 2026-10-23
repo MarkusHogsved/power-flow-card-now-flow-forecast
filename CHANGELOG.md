@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+
+- Now: the solar node also shows today's forecast (new `solar.forecast_today`),
+  and the grid node shows energy bought today (`grid.today_import`) and what
+  it cost (new `grid.today_cost`). Each figure opens its sensor.
+- README screenshots retaken, now with the node icons.
+
 ## 0.3.0
 
 - New fourth view **Review**: how the last 12 or 24 hours went, from the

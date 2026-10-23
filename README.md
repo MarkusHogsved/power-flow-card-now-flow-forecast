@@ -52,6 +52,7 @@ home:
 solar:
   entity: sensor.solar_power
   today_energy: sensor.solar_energy_today
+  forecast_today: sensor.solcast_pv_forecast_forecast_today
   forecast_tomorrow: sensor.solcast_pv_forecast_forecast_tomorrow
   forecast_entities:          # Solcast sensors with detailedForecast
     - sensor.solcast_pv_forecast_forecast_today
@@ -61,6 +62,7 @@ grid:
   price: sensor.nordpool_kwh_se3_sek_3_10_025
   today_import: sensor.grid_import_today
   today_export: sensor.grid_export_today
+  today_cost: sensor.tibber_accumulated_cost
 batteries:
   - name: Solar battery
     state_of_charge: sensor.growatt_battery_soc
@@ -111,11 +113,13 @@ loadcast:
 | `view_key` | Give each card its own key if you have several on one dashboard, so they remember their views separately. |
 | `solar.entity` | Solar production power. |
 | `solar.today_energy` | Energy produced today (kWh). |
+| `solar.forecast_today` | Forecast total for today (kWh), shown next to the solar node in Now. |
 | `solar.forecast_tomorrow` | Forecast total for tomorrow (kWh). |
 | `solar.forecast_entities` | Sensors with a Solcast-style `detailedForecast` attribute. Used to find the hour when solar (P10, the cautious estimate) covers the forecast demand. |
 | `grid.entity` | Grid power, positive = import. `invert_state: true` if yours is the other way round. |
 | `grid.price` | Current electricity price. |
-| `grid.today_import` / `grid.today_export` | Energy bought / sold today (kWh). |
+| `grid.today_import` / `grid.today_export` | Energy bought / sold today (kWh). Bought today is also shown under the grid node in Now. |
+| `grid.today_cost` | What today's purchases cost, e.g. Tibber's *accumulated cost*. Shown under the grid node in Now, with the sensor's own unit. |
 | `batteries[]` | `state_of_charge` (required), `entity` (power, positive = charging; one entity or a list that is summed; `invert_state` flips it) or `charge_entity` + `discharge_entity` (both positive, each one entity or a list), `name`, `icon`, `capacity_kwh` and `reserve_soc` (needed for *Will the battery last?*). |
 | `batteries[].inside_home` | `true` for a battery that charges from the home's own consumption, e.g. a UPS on a socket. Its level and power are shown, but it is left out of the flows and the Sankey, so its charging is not counted twice. |
 | `large_loads[]` | `entity`, `name`, `icon`, `color`, `threshold` (W, default 30). Shown under *Running now* only at or above the threshold. |

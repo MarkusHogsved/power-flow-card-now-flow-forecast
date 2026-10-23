@@ -132,6 +132,13 @@ export const styles = css`
     line-height: 16px;
     color: var(--nff-muted);
   }
+  .node-label span {
+    cursor: pointer;
+  }
+  .grid-label {
+    white-space: nowrap;
+    text-align: center;
+  }
   .bank {
     position: absolute;
     box-sizing: border-box;

@@ -20,6 +20,8 @@ export interface SolarConfig {
   entity: string;
   /** Energy produced today (kWh). */
   today_energy?: string;
+  /** Total forecast for today (kWh), e.g. Solcast "forecast today". Shown at the solar node. */
+  forecast_today?: string;
   /** Total forecast for tomorrow (kWh), e.g. Solcast "forecast tomorrow". */
   forecast_tomorrow?: string;
   /**
@@ -37,6 +39,8 @@ export interface GridConfig {
   price?: string;
   today_import?: string;
   today_export?: string;
+  /** Cost of the energy bought today, in its own currency unit (e.g. Tibber "accumulated cost"). */
+  today_cost?: string;
 }
 
 /** One entity, or several whose values are summed (e.g. two BMS packs). */
