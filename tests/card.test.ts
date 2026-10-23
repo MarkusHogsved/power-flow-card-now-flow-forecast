@@ -61,6 +61,31 @@ describe("card", () => {
     expect(tiles[0].textContent).toContain("EV");
   });
 
+  test("Now shows today's solar forecast and today's purchase and cost at the nodes", async () => {
+    const card = await mount(
+      {
+        ...houseConfig,
+        solar: { ...houseConfig.solar!, forecast_today: "sensor.solar_forecast_today" },
+        grid: { ...houseConfig.grid!, today_cost: "sensor.cost_today" },
+      },
+      {
+        ...eveningStates,
+        "sensor.solar_forecast_today": ["43.23", { unit_of_measurement: "kWh" }],
+        "sensor.cost_today": ["42.24", { unit_of_measurement: "SEK" }],
+      },
+    );
+    const labels = [...root(card).querySelectorAll(".node-label")].map((l) => l.textContent?.replace(/\s+/g, ""));
+    expect(labels).toContain("Solar35kWhtoday~43kWhforecast");
+    expect(labels).toContain("Grid46kWhtoday42SEK");
+  });
+
+  test("without the optional entities the node labels stay short", async () => {
+    const card = await mount({ ...houseConfig, solar: { entity: "sensor.solar" }, grid: { entity: "sensor.grid" } });
+    const labels = [...root(card).querySelectorAll(".node-label")].map((l) => l.textContent?.replace(/\s+/g, " ").trim());
+    expect(labels).toContain("Solar");
+    expect(labels).toContain("Grid");
+  });
+
   test("no running loads -> no 'Running now' section", async () => {
     const card = await mount(houseConfig);
     expect(root(card).textContent).not.toContain("Running now");
