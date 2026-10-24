@@ -6,6 +6,10 @@
 //
 // Endpoints:
 //   GET /frame.jpg               current picture (WIDTH x HEIGHT, already rotated; ETag, 304 when unchanged)
+//       ?tap=x,y&n=7             ... after a tap at display coordinates
+//       ?swipe=x1,y1,x2,y2&n=8   ... after a swipe
+//                                n is a sequence number: the display keeps the
+//                                URL, so a repeated n is not replayed
 //   GET /tap?x=&y=               click at display coordinates
 //   GET /swipe?x1=&y1=&x2=&y2=   scroll the card by the swipe distance
 //   GET /healthz                 "ok" once connected and rendered
@@ -204,6 +208,7 @@ let dirty = true;
 let lastPush = 0;
 let cardConfig;
 let lastTouch = 0;
+let lastInput = null; // n of the last tap/swipe carried in /frame.jpg
 
 const pushHass = async () => {
   await page.evaluate(
@@ -297,6 +302,24 @@ const server = http.createServer((req, res) => {
   serial(async () => {
     try {
       if (url.pathname === "/frame.jpg") {
+        // A tap or swipe carried in the picture URL: one request per touch, and
+        // the answer already shows its result
+        const n = url.searchParams.get("n");
+        const nums = (k) => (url.searchParams.get(k) ?? "").split(",").map(Number);
+        if (n !== null && n !== lastInput) {
+          lastInput = n;
+          lastTouch = Date.now();
+          if (url.searchParams.has("tap")) {
+            const [x, y] = nums("tap");
+            await page.mouse.click(x, y);
+            await new Promise((r) => setTimeout(r, 150));
+          } else if (url.searchParams.has("swipe")) {
+            const [x1, y1, x2, y2] = nums("swipe");
+            const a = toCard(x1, y1);
+            const b = toCard(x2, y2);
+            await page.evaluate((dy) => document.getElementById("scroll").scrollBy(0, dy), a.y - b.y);
+          }
+        }
         // ETag: an unchanged picture answers 304, so the display skips decoding and redrawing it
         const jpeg = await frame();
         const etag = `"${createHash("sha1").update(jpeg).digest("hex").slice(0, 16)}"`;

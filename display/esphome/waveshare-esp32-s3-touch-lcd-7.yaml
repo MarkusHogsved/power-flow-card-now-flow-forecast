@@ -148,15 +148,11 @@ online_image:
     buffer_size: 65536     # the largest allowed; the renderer keeps pictures below it
     update_interval: ${refresh}
     on_download_finished:
-      # cached = the renderer answered 304 (picture unchanged): nothing to redraw
-      - if:
-          condition:
-            lambda: return !cached;
-          then:
-            - lambda: |-
-                id(frame_ready) = true;
-                id(show_touch) = false;
-            - component.update: panel
+      - lambda: |-
+          if (!cached) id(frame_ready) = true;
+          id(show_touch) = false;
+      # cached = the renderer answered 304 (picture unchanged): only the ring to remove
+      - component.update: panel
       # A tap or swipe came while this picture was downloading: fetch again now
       - if:
           condition:
@@ -170,6 +166,8 @@ online_image:
 # ---------------------------------------------------------------- Touch
 
 globals:
+  - id: input_seq
+    type: uint32_t
   - id: show_touch
     type: bool
   - id: refetch
@@ -212,36 +210,32 @@ touchscreen:
           id(touch_x1) = t.x;
           id(touch_y1) = t.y;
         }
+  # Taps and swipes travel in the picture URL (?tap=x,y&n=7), so there is
+  # only one HTTP request at a time and its answer shows the result. n is a
+  # sequence number; the renderer ignores an n it has already seen, as the
+  # periodic refresh keeps fetching the same URL.
   on_release:
     - if:
         condition:
           lambda: return !id(woke_up);
         then:
-          - if:
-              condition:
-                # Moved more than 40 px: a swipe, otherwise a tap
-                lambda: return abs(id(touch_x1) - id(touch_x0)) + abs(id(touch_y1) - id(touch_y0)) > 40;
-              then:
-                - http_request.get:
-                    url: !lambda |-
-                      char buf[160];
-                      snprintf(buf, sizeof(buf), "${renderer_url}/swipe?x1=%d&y1=%d&x2=%d&y2=%d",
-                               id(touch_x0), id(touch_y0), id(touch_x1), id(touch_y1));
-                      return std::string(buf);
-                    on_response:
-                      - lambda: id(refetch) = true;
-                      - component.update: frame
-              else:
-                - lambda: id(show_touch) = true;
-                - component.update: panel
-                - http_request.get:
-                    url: !lambda |-
-                      char buf[120];
-                      snprintf(buf, sizeof(buf), "${renderer_url}/tap?x=%d&y=%d", id(touch_x0), id(touch_y0));
-                      return std::string(buf);
-                    on_response:
-                      - lambda: id(refetch) = true;
-                      - component.update: frame
+          - lambda: |-
+              id(input_seq)++;
+              // Moved more than 40 px: a swipe, otherwise a tap (shown with a ring)
+              id(show_touch) = abs(id(touch_x1) - id(touch_x0)) + abs(id(touch_y1) - id(touch_y0)) <= 40;
+              id(refetch) = true;
+          - component.update: panel
+          - online_image.set_url:
+              id: frame
+              url: !lambda |-
+                char buf[160];
+                if (id(show_touch))
+                  snprintf(buf, sizeof(buf), "${renderer_url}/frame.jpg?tap=%d,%d&n=%u",
+                           id(touch_x0), id(touch_y0), (unsigned) id(input_seq));
+                else
+                  snprintf(buf, sizeof(buf), "${renderer_url}/frame.jpg?swipe=%d,%d,%d,%d&n=%u",
+                           id(touch_x0), id(touch_y0), id(touch_x1), id(touch_y1), (unsigned) id(input_seq));
+                return std::string(buf);
 
 # Backlight off at night after a while untouched; a touch turns it on again
 interval:
