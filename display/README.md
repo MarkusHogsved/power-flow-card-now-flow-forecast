@@ -50,7 +50,7 @@ version you have installed. It goes back to the default view after
 | `WIDTH` / `HEIGHT` | `800` / `480` | The panel as mounted |
 | `ROTATE` | `90` | `90` or `270`: portrait card on a landscape panel; `0`: landscape |
 | `IDLE_RESET_S` | `120` | Back to the default view after this long untouched; `0` = never |
-| `JPEG_QUALITY` / `MAX_BYTES` | `85` / `64000` | Quality is lowered until the picture fits ESPHome's 64 KiB download buffer |
+| `JPEG_QUALITY` / `MAX_BYTES` | `75` / `64000` | Quality is lowered until the picture fits ESPHome's 64 KiB download buffer |
 | `PORT` | `8099` | |
 
 The idea of serving finished pictures to thin display clients, and the

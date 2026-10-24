@@ -28,7 +28,7 @@ const WIDTH = Number(env("WIDTH", "800")); // display size in pixels, as mounted
 const HEIGHT = Number(env("HEIGHT", "480"));
 const ROTATE = Number(env("ROTATE", "90")); // 0, 90 or 270: card portrait on a landscape panel
 const PORT = Number(env("PORT", "8099"));
-const QUALITY = Number(env("JPEG_QUALITY", "85"));
+const QUALITY = Number(env("JPEG_QUALITY", "75"));
 const MAX_BYTES = Number(env("MAX_BYTES", "64000")); // ESPHome's online_image buffer is at most 64 KiB
 const LANGUAGE = env("LANGUAGE", "en");
 const IDLE_RESET_S = Number(env("IDLE_RESET_S", "120")); // back to the default view after this long untouched; 0 = never

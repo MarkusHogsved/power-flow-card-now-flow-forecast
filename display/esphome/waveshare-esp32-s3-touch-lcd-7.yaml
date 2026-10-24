@@ -70,6 +70,7 @@ time:
 http_request:
   timeout: 10s
   verify_ssl: false
+  buffer_size_rx: 8192   # default 512 made a 35 KB picture take ~3 s
 
 # ---------------------------------------------------------------- Hardware
 
@@ -130,6 +131,12 @@ display:
     lambda: |-
       // Nothing to draw until the first picture has arrived
       if (id(frame_ready)) it.image(0, 0, id(frame));
+      // A ring where the screen was touched, until the next picture arrives
+      if (id(show_touch)) {
+        it.circle(id(touch_x0), id(touch_y0), 26, Color(255, 255, 255));
+        it.circle(id(touch_x0), id(touch_y0), 27, Color(255, 255, 255));
+        it.circle(id(touch_x0), id(touch_y0), 28, Color(80, 80, 80));
+      }
 
 # ---------------------------------------------------------------- The card
 
@@ -146,14 +153,27 @@ online_image:
           condition:
             lambda: return !cached;
           then:
-            - lambda: id(frame_ready) = true;
+            - lambda: |-
+                id(frame_ready) = true;
+                id(show_touch) = false;
             - component.update: panel
+      # A tap or swipe came while this picture was downloading: fetch again now
+      - if:
+          condition:
+            lambda: return id(refetch);
+          then:
+            - lambda: id(refetch) = false;
+            - component.update: frame
     on_error:
       - logger.log: "Could not fetch a picture from the renderer"
 
 # ---------------------------------------------------------------- Touch
 
 globals:
+  - id: show_touch
+    type: bool
+  - id: refetch
+    type: bool
   - id: frame_ready
     type: bool
     initial_value: "false"
@@ -209,14 +229,18 @@ touchscreen:
                                id(touch_x0), id(touch_y0), id(touch_x1), id(touch_y1));
                       return std::string(buf);
                     on_response:
+                      - lambda: id(refetch) = true;
                       - component.update: frame
               else:
+                - lambda: id(show_touch) = true;
+                - component.update: panel
                 - http_request.get:
                     url: !lambda |-
                       char buf[120];
                       snprintf(buf, sizeof(buf), "${renderer_url}/tap?x=%d&y=%d", id(touch_x0), id(touch_y0));
                       return std::string(buf);
                     on_response:
+                      - lambda: id(refetch) = true;
                       - component.update: frame
 
 # Backlight off at night after a while untouched; a touch turns it on again
