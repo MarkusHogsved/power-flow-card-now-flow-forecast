@@ -12,6 +12,7 @@
 //                                URL, so a repeated n is not replayed
 //   GET /tap?x=&y=               click at display coordinates
 //   GET /swipe?x1=&y1=&x2=&y2=   scroll the card by the swipe distance
+//   GET /status                  states known / in the page, for checking
 //   GET /healthz                 "ok" once connected and rendered
 import { createHash } from "node:crypto";
 import http from "node:http";
@@ -218,14 +219,17 @@ let cardConfig;
 let lastTouch = 0;
 let lastInput = null; // n of the last tap/swipe carried in /frame.jpg
 
+const FULL_PUSH_MS = 5 * 60_000; // all states again now and then, in case a delta was lost
+let lastFullPush = 0;
+let pageStates = 0;
+
 const pushHass = async () => {
-  const delta = fullPush ? states : Object.fromEntries([...changed].map((id) => [id, states[id] ?? null]));
-  const full = fullPush;
-  fullPush = false;
-  changed.clear();
-  dirty = false;
-  lastPush = Date.now();
-  await page.evaluate(
+  const full = fullPush || Date.now() - lastFullPush > FULL_PUSH_MS;
+  const ids = full ? null : [...changed];
+  const delta = full ? states : Object.fromEntries(ids.map((id) => [id, states[id] ?? null]));
+  // The flags are cleared only after the page has the states - a failed
+  // push must not leave the card with only later changes
+  pageStates = await page.evaluate(
     (delta, full, language) => {
       if (full || !window.__states) window.__states = {};
       for (const [id, s] of Object.entries(delta)) {
@@ -233,13 +237,22 @@ const pushHass = async () => {
         else delete window.__states[id];
       }
       const card = window.__card;
-      if (!card) return;
-      card.hass = { states: { ...window.__states }, locale: { language }, language, callWS: (msg) => window.__callWS(msg) };
+      if (card) card.hass = { states: { ...window.__states }, locale: { language }, language, callWS: (msg) => window.__callWS(msg) };
+      return Object.keys(window.__states).length;
     },
     delta,
     full,
     LANGUAGE,
   );
+  if (full) {
+    fullPush = false;
+    lastFullPush = Date.now();
+    changed.clear();
+  } else {
+    for (const id of ids) changed.delete(id);
+  }
+  dirty = changed.size > 0;
+  lastPush = Date.now();
 };
 
 const start = async () => {
@@ -312,8 +325,14 @@ const frame = async () => {
     lastTouch = 0;
     await resetView();
   }
-  // Only what changed since the last picture
-  if (dirty) await pushHass();
+  // Only what changed since the last picture (and everything every few minutes)
+  if (dirty || fullPush || Date.now() - lastFullPush > FULL_PUSH_MS) {
+    try {
+      await pushHass();
+    } catch (e) {
+      log("state push failed:", e.message);
+    }
+  }
   await page.evaluate(() => window.__card?.updateComplete);
   // Lower the quality until the picture fits the display's download buffer
   let quality = QUALITY;
@@ -400,6 +419,14 @@ const server = http.createServer((req, res) => {
         const b = toCard(n("x2"), n("y2"));
         await scrollBy(a.y - b.y);
         done(204);
+      } else if (url.pathname === "/status") {
+        done(200, JSON.stringify({
+          connected,
+          states: Object.keys(states).length,
+          page_states: pageStates,
+          pending_changes: changed.size,
+          last_full_push_s: lastFullPush ? Math.round((Date.now() - lastFullPush) / 1000) : null,
+        }), "application/json");
       } else if (url.pathname === "/healthz") {
         done(connected ? 200 : 503, connected ? "ok" : "not connected");
       } else {
