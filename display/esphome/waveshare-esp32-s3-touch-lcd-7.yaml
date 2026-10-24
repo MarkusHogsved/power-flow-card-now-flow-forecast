@@ -37,8 +37,10 @@ esp32:
       CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
       CONFIG_ESPTOOLPY_FLASHSIZE_8MB: "y"
       CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240: "y"
-      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
-      CONFIG_SPIRAM_RODATA: "y"
+      # Code and constants stay in flash: from PSRAM every instruction fetch
+      # competed with the panel's continuous frame buffer reads
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "n"
+      CONFIG_SPIRAM_RODATA: "n"
       CONFIG_COMPILER_OPTIMIZATION_PERF: "y"
       # Room for picture downloads that linger next to the API connection
       CONFIG_LWIP_MAX_SOCKETS: "16"
@@ -128,38 +130,20 @@ switch:
     restore_mode: ALWAYS_ON
 
 display:
-  - platform: rpi_dpi_rgb
+  # mipi_rgb streams the frame buffer through small bounce buffers in internal
+  # RAM. rpi_dpi_rgb let the panel read PSRAM directly all the time, which
+  # starved Wi-Fi: pictures took 2-30 s or failed, against ~0.2 s with the
+  # panel switched off.
+  - platform: mipi_rgb
+    model: ESP32-S3-TOUCH-LCD-7-800X480
     id: panel
+    # The model also switches the backlight (expander pin 2); keep that on the
+    # Backlight switch above so it can be turned off at night
+    enable_pin:
+      ch422g: ch422g_hub
+      number: 6
     update_interval: never
     auto_clear_enabled: false
-    color_order: RGB
-    pclk_frequency: 12MHZ   # less PSRAM traffic for the panel; leaves room for Wi-Fi
-    dimensions:
-      width: 800
-      height: 480
-    de_pin:
-      number: 5
-    hsync_pin:
-      number: 46
-      ignore_strapping_warning: true
-    vsync_pin:
-      number: 3
-      ignore_strapping_warning: true
-    pclk_pin: 7
-    pclk_inverted: true
-    reset_pin:
-      ch422g: ch422g_hub
-      number: 3
-    hsync_back_porch: 8
-    hsync_front_porch: 8
-    hsync_pulse_width: 4
-    vsync_back_porch: 16
-    vsync_front_porch: 16
-    vsync_pulse_width: 4
-    data_pins:
-      red: [1, 2, 42, 41, 40]
-      blue: [14, 38, 18, 17, 10]
-      green: [39, 0, 45, 48, 47, 21]
     lambda: |-
       // Nothing to draw until the first picture has arrived
       if (id(frame_ready)) it.image(0, 0, id(frame));
