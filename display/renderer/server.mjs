@@ -348,14 +348,17 @@ let queue = Promise.resolve();
 const serial = (fn) => (queue = queue.then(fn, fn));
 
 const server = http.createServer((req, res) => {
-  // Hard close a few seconds after the answer: the display's HTTP client has
-  // been seen to keep connections for ~2 minutes, and an ESP32 runs out of
-  // sockets after about ten
+  // Hard close a while after the answer: the display's HTTP client has been
+  // seen to keep connections for ~2 minutes, and an ESP32 runs out of sockets
+  // after about ten. Not sooner than 30 s: "finish" only means the data left
+  // here, and the display may still be downloading and decoding (up to ~6 s
+  // seen) - a reset then left ESPHome's online_image stuck "already being
+  // updated" until the display's watchdog restarted it.
   res.on("finish", () => {
     const socket = res.socket;
     setTimeout(() => {
       if (socket && !socket.destroyed) socket.resetAndDestroy();
-    }, 5000);
+    }, 30_000);
   });
   const url = new URL(req.url, "http://x");
   const n = (k) => Number(url.searchParams.get(k));
