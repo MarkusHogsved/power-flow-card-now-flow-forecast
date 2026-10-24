@@ -35,6 +35,8 @@ const PORT = Number(env("PORT", "8099"));
 const QUALITY = Number(env("JPEG_QUALITY", "75"));
 const MAX_BYTES = Number(env("MAX_BYTES", "64000")); // ESPHome's online_image buffer is at most 64 KiB
 const LANGUAGE = env("LANGUAGE", "en");
+const BACKGROUND = env("BACKGROUND", "#000000"); // card and page background; black gives an LCD the most contrast
+const FIXED_HEADER = env("FIXED_HEADER", "true") !== "false"; // header and tabs stay put, only the view scrolls
 const IDLE_RESET_S = Number(env("IDLE_RESET_S", "120")); // back to the default view after this long untouched; 0 = never
 
 if (!HA_TOKEN) {
@@ -168,9 +170,9 @@ const transform =
 const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
 <style>
-  html, body { margin: 0; width: ${WIDTH}px; height: ${HEIGHT}px; overflow: hidden; background: #111417; }
+  html, body { margin: 0; width: ${WIDTH}px; height: ${HEIGHT}px; overflow: hidden; background: ${BACKGROUND}; }
   :root {
-    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --card-background-color: #1c1c1c;
+    --primary-text-color: #f2f2f2; --secondary-text-color: #a8a8a8; --card-background-color: ${BACKGROUND};
     --divider-color: rgba(225, 225, 225, 0.12); --primary-color: #03a9f4;
     font-family: Roboto, sans-serif; color: #e1e1e1;
   }
@@ -186,6 +188,7 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
   customElements.define("ha-card", class extends HTMLElement {
     connectedCallback() {
       Object.assign(this.style, { display: "flex", minHeight: "${CARD_H}px", boxSizing: "border-box",
+        ${FIXED_HEADER ? `height: "${CARD_H}px", overflow: "hidden",` : ""}
         background: "var(--card-background-color)", color: "var(--primary-text-color)" });
     }
   });
@@ -247,10 +250,34 @@ const start = async () => {
     document.getElementById("scroll").appendChild(card);
     window.__card = card;
   }, config);
+  if (FIXED_HEADER) {
+    // Only the view below the tabs scrolls: the card's own .view gets the rest of the height
+    await page.evaluate(async () => {
+      const card = window.__card;
+      await card.updateComplete;
+      // An adopted sheet: Lit keeps its own sheets there and never replaces the list
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(`.view { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+                         .view > * { flex-shrink: 0; }
+                         .view::-webkit-scrollbar { display: none; }`);
+      card.shadowRoot.adoptedStyleSheets = [...card.shadowRoot.adoptedStyleSheets, sheet];
+    });
+  }
   await pushHass();
   await page.evaluate(() => document.fonts.ready);
   log(`rendering ${WIDTH}x${HEIGHT}, card ${CARD_W}x${CARD_H}, rotate ${ROTATE}`);
 };
+
+/** What a swipe scrolls: the card's view (fixed header) or the whole card. */
+const scrollBy = (dy) =>
+  page.evaluate(
+    (dy, fixed) => {
+      const el = fixed ? window.__card?.shadowRoot?.querySelector(".view") : document.getElementById("scroll");
+      el?.scrollBy(0, dy);
+    },
+    dy,
+    FIXED_HEADER,
+  );
 
 /** Display coordinates (as mounted) -> card coordinates. */
 const toCard = (x, y) =>
@@ -261,6 +288,8 @@ const resetView = () =>
   page.evaluate((cfg) => {
     window.__card?.setConfig(cfg);
     document.getElementById("scroll").scrollTop = 0;
+    const view = window.__card?.shadowRoot?.querySelector(".view");
+    if (view) view.scrollTop = 0;
   }, cardConfig);
 
 const frame = async () => {
@@ -317,7 +346,7 @@ const server = http.createServer((req, res) => {
             const [x1, y1, x2, y2] = nums("swipe");
             const a = toCard(x1, y1);
             const b = toCard(x2, y2);
-            await page.evaluate((dy) => document.getElementById("scroll").scrollBy(0, dy), a.y - b.y);
+            await scrollBy(a.y - b.y);
           }
         }
         // ETag: an unchanged picture answers 304, so the display skips decoding and redrawing it
@@ -345,7 +374,7 @@ const server = http.createServer((req, res) => {
         lastTouch = Date.now();
         const a = toCard(n("x1"), n("y1"));
         const b = toCard(n("x2"), n("y2"));
-        await page.evaluate((dy) => document.getElementById("scroll").scrollBy(0, dy), a.y - b.y);
+        await scrollBy(a.y - b.y);
         done(204);
       } else if (url.pathname === "/healthz") {
         done(connected ? 200 : 503, connected ? "ok" : "not connected");

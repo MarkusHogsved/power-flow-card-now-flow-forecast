@@ -49,6 +49,8 @@ version you have installed. It goes back to the default view after
 | `CARD_URL` | HACS on HA, then the latest GitHub release | Where to load the card from |
 | `WIDTH` / `HEIGHT` | `800` / `480` | The panel as mounted |
 | `ROTATE` | `90` | `90` or `270`: portrait card on a landscape panel; `0`: landscape |
+| `BACKGROUND` | `#000000` | Page and card background; black gives an LCD the most contrast |
+| `FIXED_HEADER` | `true` | Header and tabs stay put; only the view below them scrolls |
 | `IDLE_RESET_S` | `120` | Back to the default view after this long untouched; `0` = never |
 | `JPEG_QUALITY` / `MAX_BYTES` | `75` / `64000` | Quality is lowered until the picture fits ESPHome's 64 KiB download buffer |
 | `PORT` | `8099` | |
