@@ -11,7 +11,7 @@ substitutions:
   name: energy-display
   friendly_name: Energy display
   renderer_url: http://192.168.2.160:8099
-  refresh: 5s            # how often a new picture is fetched
+  refresh: 15s           # how often a new picture is fetched (a touch fetches at once)
   sleep_after_min: "10"  # backlight off after this many minutes untouched, at night
   night_from: "22"       # night = from this hour ...
   night_to: "6"          # ... to this hour

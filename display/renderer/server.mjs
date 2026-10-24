@@ -83,6 +83,7 @@ const connect = () => {
       connected = true;
       log("connected to Home Assistant", msg.ha_version);
       for (const s of await send({ type: "get_states" })) states[s.entity_id] = s;
+      fullPush = true;
       await send({ type: "subscribe_events", event_type: "state_changed" });
       dirty = true;
       firstLogin();
@@ -209,22 +210,36 @@ let browser;
 let page;
 let dirty = true;
 let lastPush = 0;
+// Entities changed since the last push; the page keeps its own copy of the
+// states, so only these travel (a whole HA instance is thousands of entities)
+const changed = new Set();
+let fullPush = true;
 let cardConfig;
 let lastTouch = 0;
 let lastInput = null; // n of the last tap/swipe carried in /frame.jpg
 
 const pushHass = async () => {
-  await page.evaluate(
-    (s, language) => {
-      const card = window.__card;
-      if (!card) return;
-      card.hass = { states: s, locale: { language }, language, callWS: (msg) => window.__callWS(msg) };
-    },
-    states,
-    LANGUAGE,
-  );
+  const delta = fullPush ? states : Object.fromEntries([...changed].map((id) => [id, states[id] ?? null]));
+  const full = fullPush;
+  fullPush = false;
+  changed.clear();
   dirty = false;
   lastPush = Date.now();
+  await page.evaluate(
+    (delta, full, language) => {
+      if (full || !window.__states) window.__states = {};
+      for (const [id, s] of Object.entries(delta)) {
+        if (s) window.__states[id] = s;
+        else delete window.__states[id];
+      }
+      const card = window.__card;
+      if (!card) return;
+      card.hass = { states: { ...window.__states }, locale: { language }, language, callWS: (msg) => window.__callWS(msg) };
+    },
+    delta,
+    full,
+    LANGUAGE,
+  );
 };
 
 const start = async () => {
@@ -297,8 +312,8 @@ const frame = async () => {
     lastTouch = 0;
     await resetView();
   }
-  // Push state at most once a second; HA sends many small changes
-  if (dirty || Date.now() - lastPush > 1000) await pushHass();
+  // Only what changed since the last picture
+  if (dirty) await pushHass();
   await page.evaluate(() => window.__card?.updateComplete);
   // Lower the quality until the picture fits the display's download buffer
   let quality = QUALITY;
