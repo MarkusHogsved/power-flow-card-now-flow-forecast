@@ -329,6 +329,15 @@ let queue = Promise.resolve();
 const serial = (fn) => (queue = queue.then(fn, fn));
 
 const server = http.createServer((req, res) => {
+  // Hard close a few seconds after the answer: the display's HTTP client has
+  // been seen to keep connections for ~2 minutes, and an ESP32 runs out of
+  // sockets after about ten
+  res.on("finish", () => {
+    const socket = res.socket;
+    setTimeout(() => {
+      if (socket && !socket.destroyed) socket.resetAndDestroy();
+    }, 5000);
+  });
   const url = new URL(req.url, "http://x");
   const n = (k) => Number(url.searchParams.get(k));
   // Content-Length and Connection: close on every answer - ESPHome's HTTP
