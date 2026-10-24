@@ -53,6 +53,12 @@ api:
 
 ota:
   - platform: esphome
+    # Picture downloads take most of the device's time; pause them so the
+    # update gets through
+    on_begin:
+      - component.suspend: frame
+    on_error:
+      - component.resume: frame
 
 wifi:
   ssid: !secret wifi_ssid
