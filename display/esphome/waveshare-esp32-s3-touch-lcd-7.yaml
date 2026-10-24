@@ -42,6 +42,10 @@ esp32:
       CONFIG_COMPILER_OPTIMIZATION_PERF: "y"
       # Room for picture downloads that linger next to the API connection
       CONFIG_LWIP_MAX_SOCKETS: "16"
+      # Wi-Fi and network buffers in internal RAM: the RGB panel reads its frame
+      # buffer from PSRAM continuously, and Wi-Fi buffers in PSRAM then starve -
+      # packets were dropped inside the ESP (retransmits, "Auth Expired")
+      CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP: "n"
 
 psram:
   mode: octal
@@ -50,6 +54,10 @@ psram:
 logger:
   logs:
     component: ERROR
+
+# Free memory, largest free block and loop time in the log every 10 s
+debug:
+  update_interval: 10s
 
 api:
 
@@ -67,6 +75,9 @@ wifi:
   password: !secret wifi_password
   # The default (light) power saving throttles downloads to ~10 KB/s
   power_save_mode: none
+  # Roam scans after connecting (ESPHome 2026.1+) dropped the link every few
+  # minutes: picture downloads, the API and even OTA stalled for minutes
+  post_connect_roaming: false
   # Own hotspot if the network cannot be reached, to fix the settings
   ap:
     ssid: ${name}
@@ -81,6 +92,17 @@ http_request:
   timeout: 10s
   verify_ssl: false
   buffer_size_rx: 8192   # default 512 made a 35 KB picture take ~3 s
+
+sensor:
+  - platform: debug
+    free:
+      name: Heap free
+    block:
+      name: Heap max block
+    loop_time:
+      name: Loop time
+    psram:
+      name: PSRAM free
 
 # ---------------------------------------------------------------- Hardware
 
@@ -111,7 +133,7 @@ display:
     update_interval: never
     auto_clear_enabled: false
     color_order: RGB
-    pclk_frequency: 16MHZ
+    pclk_frequency: 12MHZ   # less PSRAM traffic for the panel; leaves room for Wi-Fi
     dimensions:
       width: 800
       height: 480
