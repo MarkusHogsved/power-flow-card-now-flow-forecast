@@ -1,0 +1,222 @@
+# Power Flow Card on a Waveshare ESP32-S3-Touch-LCD-7 (800x480, GT911 touch).
+#
+# The card itself is rendered by display/renderer (headless Chromium) and
+# fetched as a JPEG. The picture is already rotated, so the panel is used in
+# its native landscape orientation while the card reads portrait. Taps and
+# swipes are sent back to the renderer, which replays them in the card.
+#
+# Set renderer_url to where the renderer runs. The hardware part (display
+# pins, CH422G expander, GT911) is the board's standard setup.
+substitutions:
+  name: energy-display
+  friendly_name: Energy display
+  renderer_url: http://192.168.2.160:8099
+  refresh: 5s            # how often a new picture is fetched
+  sleep_after_min: "10"  # backlight off after this many minutes untouched, at night
+  night_from: "22"       # night = from this hour ...
+  night_to: "6"          # ... to this hour
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.6.0
+  platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.arduino.memory_type: qio_opi
+    board_build.flash_mode: dio
+    board_upload.maximum_ram_size: 524288
+
+esp32:
+  board: esp32s3box
+  variant: ESP32S3
+  flash_size: 8MB
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
+      CONFIG_ESPTOOLPY_FLASHSIZE_8MB: "y"
+      CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240: "y"
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
+      CONFIG_SPIRAM_RODATA: "y"
+      CONFIG_COMPILER_OPTIMIZATION_PERF: "y"
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  logs:
+    component: ERROR
+
+api:
+
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: ha_time
+
+http_request:
+  timeout: 10s
+  verify_ssl: false
+
+# ---------------------------------------------------------------- Hardware
+
+i2c:
+  sda: GPIO08
+  scl: GPIO09
+  id: bus_a
+
+ch422g:
+  - id: ch422g_hub
+
+switch:
+  - platform: restart
+    name: Restart
+  - platform: gpio
+    id: backlight
+    name: Backlight
+    pin:
+      ch422g: ch422g_hub
+      number: 2
+      mode:
+        output: true
+    restore_mode: ALWAYS_ON
+
+display:
+  - platform: rpi_dpi_rgb
+    id: panel
+    update_interval: never
+    auto_clear_enabled: false
+    color_order: RGB
+    pclk_frequency: 16MHZ
+    dimensions:
+      width: 800
+      height: 480
+    de_pin:
+      number: 5
+    hsync_pin:
+      number: 46
+      ignore_strapping_warning: true
+    vsync_pin:
+      number: 3
+      ignore_strapping_warning: true
+    pclk_pin: 7
+    pclk_inverted: true
+    reset_pin:
+      ch422g: ch422g_hub
+      number: 3
+    hsync_back_porch: 8
+    hsync_front_porch: 8
+    hsync_pulse_width: 4
+    vsync_back_porch: 16
+    vsync_front_porch: 16
+    vsync_pulse_width: 4
+    data_pins:
+      red: [1, 2, 42, 41, 40]
+      blue: [14, 38, 18, 17, 10]
+      green: [39, 0, 45, 48, 47, 21]
+    lambda: |-
+      it.image(0, 0, id(frame));
+
+# ---------------------------------------------------------------- The card
+
+online_image:
+  - id: frame
+    url: ${renderer_url}/frame.jpg
+    format: JPEG
+    type: RGB565
+    buffer_size: 65536     # the largest allowed; the renderer keeps pictures below it
+    update_interval: ${refresh}
+    on_download_finished:
+      - component.update: panel
+    on_error:
+      - logger.log: "Could not fetch a picture from the renderer"
+
+# ---------------------------------------------------------------- Touch
+
+globals:
+  - id: touch_x0
+    type: int
+  - id: touch_y0
+    type: int
+  - id: touch_x1
+    type: int
+  - id: touch_y1
+    type: int
+  - id: last_touch_ms
+    type: uint32_t
+  - id: woke_up
+    type: bool
+
+touchscreen:
+  platform: gt911
+  id: touch
+  interrupt_pin: GPIO4
+  reset_pin:
+    ch422g: ch422g_hub
+    number: 1
+    mode: OUTPUT
+  on_touch:
+    - lambda: |-
+        id(touch_x0) = id(touch_x1) = touch.x;
+        id(touch_y0) = id(touch_y1) = touch.y;
+        id(last_touch_ms) = millis();
+        // A touch on a dark screen only wakes it up
+        id(woke_up) = !id(backlight).state;
+    - switch.turn_on: backlight
+  on_update:
+    - lambda: |-
+        for (auto t : touches) {
+          id(touch_x1) = t.x;
+          id(touch_y1) = t.y;
+        }
+  on_release:
+    - if:
+        condition:
+          lambda: return !id(woke_up);
+        then:
+          - if:
+              condition:
+                # Moved more than 40 px: a swipe, otherwise a tap
+                lambda: return abs(id(touch_x1) - id(touch_x0)) + abs(id(touch_y1) - id(touch_y0)) > 40;
+              then:
+                - http_request.get:
+                    url: !lambda |-
+                      char buf[160];
+                      snprintf(buf, sizeof(buf), "${renderer_url}/swipe?x1=%d&y1=%d&x2=%d&y2=%d",
+                               id(touch_x0), id(touch_y0), id(touch_x1), id(touch_y1));
+                      return std::string(buf);
+                    on_response:
+                      - component.update: frame
+              else:
+                - http_request.get:
+                    url: !lambda |-
+                      char buf[120];
+                      snprintf(buf, sizeof(buf), "${renderer_url}/tap?x=%d&y=%d", id(touch_x0), id(touch_y0));
+                      return std::string(buf);
+                    on_response:
+                      - component.update: frame
+
+# Backlight off at night after a while untouched; a touch turns it on again
+interval:
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              auto now = id(ha_time).now();
+              if (!now.is_valid()) return false;
+              int from = ${night_from}, to = ${night_to};
+              bool night = from > to ? (now.hour >= from || now.hour < to) : (now.hour >= from && now.hour < to);
+              return night && millis() - id(last_touch_ms) > ${sleep_after_min} * 60000UL;
+          then:
+            - switch.turn_off: backlight

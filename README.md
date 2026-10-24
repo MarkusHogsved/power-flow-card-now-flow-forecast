@@ -162,6 +162,13 @@ recorder must keep at least 24 hours (the default is 10 days).
 - **Peak grid** is the highest import; the highest phase is a 5-minute
   average, since a main fuse tolerates brief peaks.
 
+## On a wall display
+
+`display/` shows the card on a small touch screen without a browser – for
+example an ESP32 with a 7" panel running ESPHome. A renderer runs the real
+card in headless Chromium and serves it as a picture; taps and swipes on
+the display are replayed in the card. See [display/README.md](display/README.md).
+
 ## Development
 
 ```sh

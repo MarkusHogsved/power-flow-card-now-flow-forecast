@@ -1,0 +1,323 @@
+// Renders the card in headless Chromium and serves it as a JPEG, for small
+// displays that cannot run a browser themselves (e.g. an ESP32 with a
+// 800x480 RGB panel). The card keeps a live hass object fed from Home
+// Assistant's websocket, so it looks exactly as on a dashboard. Taps and
+// swipes from the display are replayed as real clicks and scrolls.
+//
+// Endpoints:
+//   GET /frame.jpg               current picture (WIDTH x HEIGHT, already rotated)
+//   GET /tap?x=&y=               click at display coordinates
+//   GET /swipe?x1=&y1=&x2=&y2=   scroll the card by the swipe distance
+//   GET /healthz                 "ok" once connected and rendered
+import http from "node:http";
+import puppeteer from "puppeteer";
+
+// Node 22 has WebSocket built in; older versions use the ws package that ships with puppeteer
+const WS = globalThis.WebSocket ?? (await import("ws")).default;
+
+const env = (name, fallback) => process.env[name] ?? fallback;
+const HA_URL = env("HA_URL", "http://homeassistant.local:8123").replace(/\/$/, "");
+const HA_TOKEN = env("HA_TOKEN", "");
+const DASHBOARD = env("DASHBOARD", "lovelace"); // url_path of the dashboard holding the card
+const CARD_TYPE = "custom:power-flow-card-now-flow-forecast";
+const CARD_INDEX = Number(env("CARD_INDEX", "0")); // which of the matching cards, in dashboard order
+const CARD_CONFIG = env("CARD_CONFIG", ""); // JSON; overrides reading the card from the dashboard
+const CARD_URL = env("CARD_URL", ""); // card .js; default HACS path on HA, then the GitHub release
+const WIDTH = Number(env("WIDTH", "800")); // display size in pixels, as mounted
+const HEIGHT = Number(env("HEIGHT", "480"));
+const ROTATE = Number(env("ROTATE", "90")); // 0, 90 or 270: card portrait on a landscape panel
+const PORT = Number(env("PORT", "8099"));
+const QUALITY = Number(env("JPEG_QUALITY", "85"));
+const MAX_BYTES = Number(env("MAX_BYTES", "64000")); // ESPHome's online_image buffer is at most 64 KiB
+const LANGUAGE = env("LANGUAGE", "en");
+const IDLE_RESET_S = Number(env("IDLE_RESET_S", "120")); // back to the default view after this long untouched; 0 = never
+
+if (!HA_TOKEN) {
+  console.error("HA_TOKEN is required (a long-lived access token from your Home Assistant profile)");
+  process.exit(1);
+}
+
+const log = (...a) => console.log(new Date().toISOString(), ...a);
+
+// ---------------------------------------------------------------- Home Assistant
+
+let ws;
+let nextId = 1;
+const pending = new Map();
+const states = {};
+let connected = false;
+
+const send = (msg) =>
+  new Promise((resolve, reject) => {
+    if (!connected) return reject(new Error("not connected to Home Assistant"));
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    ws.send(JSON.stringify({ ...msg, id }));
+    setTimeout(() => {
+      if (pending.delete(id)) reject(new Error(`timeout: ${msg.type}`));
+    }, 30_000);
+  });
+
+const connect = () =>
+  new Promise((resolve) => {
+    ws = new WS(`${HA_URL.replace(/^http/, "ws")}/api/websocket`);
+    ws.onmessage = async (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "auth_required") {
+        ws.send(JSON.stringify({ type: "auth", access_token: HA_TOKEN }));
+      } else if (msg.type === "auth_invalid") {
+        console.error("Home Assistant rejected the token:", msg.message);
+        process.exit(1);
+      } else if (msg.type === "auth_ok") {
+        connected = true;
+        log("connected to Home Assistant", msg.ha_version);
+        for (const s of await send({ type: "get_states" })) states[s.entity_id] = s;
+        await send({ type: "subscribe_events", event_type: "state_changed" });
+        resolve();
+      } else if (msg.type === "event" && msg.event?.event_type === "state_changed") {
+        const { entity_id, new_state } = msg.event.data;
+        if (new_state) states[entity_id] = new_state;
+        else delete states[entity_id];
+        dirty = true;
+      } else if (msg.type === "result" && pending.has(msg.id)) {
+        const p = pending.get(msg.id);
+        pending.delete(msg.id);
+        if (msg.success) p.resolve(msg.result);
+        else p.reject(new Error(msg.error?.message ?? "request failed"));
+      }
+    };
+    ws.onclose = () => {
+      connected = false;
+      for (const p of pending.values()) p.reject(new Error("connection closed"));
+      pending.clear();
+      log("connection to Home Assistant closed, reconnecting in 10 s");
+      setTimeout(() => connect().then(() => (dirty = true)), 10_000);
+    };
+    ws.onerror = () => {}; // onclose follows and reconnects
+  });
+
+/** The card's config: CARD_CONFIG, or the CARD_INDEX-th card of our type on DASHBOARD. */
+const loadCardConfig = async () => {
+  if (CARD_CONFIG) return JSON.parse(CARD_CONFIG);
+  const dash = await send({ type: "lovelace/config", url_path: DASHBOARD === "lovelace" ? null : DASHBOARD });
+  const found = [];
+  const walk = (node) => {
+    if (Array.isArray(node)) node.forEach(walk);
+    else if (node && typeof node === "object") {
+      if (node.type === CARD_TYPE) found.push(node);
+      Object.values(node).forEach(walk);
+    }
+  };
+  walk(dash);
+  if (!found[CARD_INDEX]) throw new Error(`no ${CARD_TYPE} #${CARD_INDEX} on dashboard ${DASHBOARD}`);
+  // The display remembers its own view, apart from the dashboards
+  return { ...found[CARD_INDEX], view_key: "display" };
+};
+
+const loadCardScript = async () => {
+  const urls = CARD_URL
+    ? [CARD_URL]
+    : [
+        `${HA_URL}/hacsfiles/power-flow-card-now-flow-forecast/power-flow-card-now-flow-forecast.js`,
+        "https://github.com/MarkusHogsved/power-flow-card-now-flow-forecast/releases/latest/download/power-flow-card-now-flow-forecast.js",
+      ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        log("card from", url);
+        return await res.text();
+      }
+    } catch {
+      // try the next one
+    }
+  }
+  throw new Error("could not download the card");
+};
+
+// ---------------------------------------------------------------- Page
+
+const portrait = ROTATE === 90 || ROTATE === 270;
+const CARD_W = portrait ? HEIGHT : WIDTH;
+const CARD_H = portrait ? WIDTH : HEIGHT;
+const transform =
+  ROTATE === 90
+    ? `translateX(${WIDTH}px) rotate(90deg)`
+    : ROTATE === 270
+      ? `translateY(${HEIGHT}px) rotate(-90deg)`
+      : "none";
+
+const PAGE = `<!doctype html><html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+<style>
+  html, body { margin: 0; width: ${WIDTH}px; height: ${HEIGHT}px; overflow: hidden; background: #111417; }
+  :root {
+    --primary-text-color: #e1e1e1; --secondary-text-color: #9b9b9b; --card-background-color: #1c1c1c;
+    --divider-color: rgba(225, 225, 225, 0.12); --primary-color: #03a9f4;
+    font-family: Roboto, sans-serif; color: #e1e1e1;
+  }
+  #screen { position: absolute; top: 0; left: 0; width: ${CARD_W}px; height: ${CARD_H}px;
+            transform-origin: 0 0; transform: ${transform}; overflow: hidden; }
+  #scroll { width: 100%; height: 100%; overflow-y: auto; scrollbar-width: none; }
+</style></head><body><div id="screen"><div id="scroll"></div></div>
+<script type="module">
+  // Stand-ins for Home Assistant's own elements, which the card uses
+  import * as mdi from "https://cdn.jsdelivr.net/npm/@mdi/js@7.4.47/mdi.js";
+  const icons = {};
+  for (const [k, v] of Object.entries(mdi)) icons[k.slice(3).replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase()] = v;
+  customElements.define("ha-card", class extends HTMLElement {
+    connectedCallback() {
+      Object.assign(this.style, { display: "flex", minHeight: "${CARD_H}px", boxSizing: "border-box",
+        background: "var(--card-background-color)", color: "var(--primary-text-color)" });
+    }
+  });
+  customElements.define("ha-icon", class extends HTMLElement {
+    set icon(v) { this._icon = v; this.draw(); }
+    get icon() { return this._icon; }
+    connectedCallback() { if (!this._icon) this._icon = this.getAttribute("icon"); this.draw(); }
+    draw() {
+      const d = icons[String(this._icon || "").replace("mdi:", "")] || "";
+      this.style.display = "inline-flex";
+      this.innerHTML = '<svg viewBox="0 0 24 24" style="width:var(--mdc-icon-size,24px);height:var(--mdc-icon-size,24px)"><path fill="currentColor" d="' + d + '"/></svg>';
+    }
+  });
+  window.__iconsReady = true;
+</script></body></html>`;
+
+let browser;
+let page;
+let dirty = true;
+let lastPush = 0;
+let cardConfig;
+let lastTouch = 0;
+
+const pushHass = async () => {
+  await page.evaluate(
+    (s, language) => {
+      const card = window.__card;
+      if (!card) return;
+      card.hass = { states: s, locale: { language }, language, callWS: (msg) => window.__callWS(msg) };
+    },
+    states,
+    LANGUAGE,
+  );
+  dirty = false;
+  lastPush = Date.now();
+};
+
+const start = async () => {
+  await connect();
+  const [config, script] = await Promise.all([loadCardConfig(), loadCardScript()]);
+  browser = await puppeteer.launch({
+    headless: env("HEADLESS", "true") === "shell" ? "shell" : true,
+    args: ["--no-sandbox", "--font-render-hinting=none"],
+  });
+  page = await browser.newPage();
+  await page.setViewport({ width: WIDTH, height: HEIGHT });
+  page.on("pageerror", (e) => log("page error:", e.message));
+  await page.exposeFunction("__callWS", (msg) => send(msg));
+  await page.setContent(PAGE, { waitUntil: "networkidle0" });
+  await page.waitForFunction(() => window.__iconsReady === true, { timeout: 30_000 });
+  await page.addScriptTag({ content: script, type: "module" });
+  cardConfig = config;
+  await page.evaluate(async (cfg) => {
+    await customElements.whenDefined("power-flow-card-now-flow-forecast");
+    const card = document.createElement("power-flow-card-now-flow-forecast");
+    card.setConfig(cfg);
+    document.getElementById("scroll").appendChild(card);
+    window.__card = card;
+  }, config);
+  await pushHass();
+  await page.evaluate(() => document.fonts.ready);
+  log(`rendering ${WIDTH}x${HEIGHT}, card ${CARD_W}x${CARD_H}, rotate ${ROTATE}`);
+};
+
+/** Display coordinates (as mounted) -> card coordinates. */
+const toCard = (x, y) =>
+  ROTATE === 90 ? { x: y, y: WIDTH - x } : ROTATE === 270 ? { x: HEIGHT - y, y: x } : { x, y };
+
+/** Default view, scrolled to the top (setConfig picks the default view, as storage is unavailable here). */
+const resetView = () =>
+  page.evaluate((cfg) => {
+    window.__card?.setConfig(cfg);
+    document.getElementById("scroll").scrollTop = 0;
+  }, cardConfig);
+
+const frame = async () => {
+  if (IDLE_RESET_S > 0 && lastTouch && Date.now() - lastTouch > IDLE_RESET_S * 1000) {
+    lastTouch = 0;
+    await resetView();
+  }
+  // Push state at most once a second; HA sends many small changes
+  if (dirty || Date.now() - lastPush > 1000) await pushHass();
+  await page.evaluate(() => window.__card?.updateComplete);
+  // Lower the quality until the picture fits the display's download buffer
+  let quality = QUALITY;
+  for (;;) {
+    const jpeg = await page.screenshot({ type: "jpeg", quality, clip: { x: 0, y: 0, width: WIDTH, height: HEIGHT } });
+    if (jpeg.length <= MAX_BYTES || quality <= 30) return jpeg;
+    quality -= 10;
+  }
+};
+
+// One page, so requests run one at a time
+let queue = Promise.resolve();
+const serial = (fn) => (queue = queue.then(fn, fn));
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, "http://x");
+  const n = (k) => Number(url.searchParams.get(k));
+  const done = (code, body = "", type = "text/plain") => {
+    res.writeHead(code, { "content-type": type, "cache-control": "no-store" });
+    res.end(body);
+  };
+  if (!page) return done(503, "starting");
+  serial(async () => {
+    try {
+      if (url.pathname === "/frame.jpg") {
+        done(200, await frame(), "image/jpeg");
+      } else if (url.pathname === "/tap") {
+        lastTouch = Date.now();
+        await page.mouse.click(n("x"), n("y"));
+        await new Promise((r) => setTimeout(r, 150));
+        done(204);
+      } else if (url.pathname === "/swipe") {
+        lastTouch = Date.now();
+        const a = toCard(n("x1"), n("y1"));
+        const b = toCard(n("x2"), n("y2"));
+        await page.evaluate((dy) => document.getElementById("scroll").scrollBy(0, dy), a.y - b.y);
+        done(204);
+      } else if (url.pathname === "/healthz") {
+        done(connected ? 200 : 503, connected ? "ok" : "not connected");
+      } else {
+        done(404, "not found");
+      }
+    } catch (e) {
+      log("request failed:", e.message);
+      done(500, e.message);
+    }
+  });
+});
+
+start()
+  .then(() => server.listen(PORT, () => log(`listening on :${PORT}`)))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+
+// Reload the card config now and then, so dashboard edits reach the display
+setInterval(() => {
+  serial(async () => {
+    try {
+      const config = await loadCardConfig();
+      if (JSON.stringify(config) !== JSON.stringify(cardConfig)) {
+        cardConfig = config;
+        await resetView();
+        dirty = true;
+      }
+    } catch (e) {
+      log("config reload failed:", e.message);
+    }
+  });
+}, 10 * 60_000);
