@@ -137,7 +137,12 @@ online_image:
     buffer_size: 65536     # the largest allowed; the renderer keeps pictures below it
     update_interval: ${refresh}
     on_download_finished:
-      - component.update: panel
+      # cached = the renderer answered 304 (picture unchanged): nothing to redraw
+      - if:
+          condition:
+            lambda: return !cached;
+          then:
+            - component.update: panel
     on_error:
       - logger.log: "Could not fetch a picture from the renderer"
 

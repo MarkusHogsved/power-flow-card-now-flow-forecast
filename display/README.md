@@ -53,5 +53,9 @@ version you have installed. It goes back to the default view after
 | `JPEG_QUALITY` / `MAX_BYTES` | `85` / `64000` | Quality is lowered until the picture fits ESPHome's 64 KiB download buffer |
 | `PORT` | `8099` | |
 
-Endpoints: `GET /frame.jpg`, `GET /tap?x=&y=`, `GET /swipe?x1=&y1=&x2=&y2=`
+The idea of serving finished pictures to thin display clients, and the
+ETag / 304 for unchanged pictures, are the same as in
+[Tesserae](https://github.com/dmellok/tesserae), which does this for e-ink panels.
+
+Endpoints: `GET /frame.jpg` (with an ETag; 304 when unchanged), `GET /tap?x=&y=`, `GET /swipe?x1=&y1=&x2=&y2=`
 (display coordinates), `GET /healthz`.

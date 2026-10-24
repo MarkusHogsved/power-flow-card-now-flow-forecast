@@ -5,10 +5,11 @@
 // swipes from the display are replayed as real clicks and scrolls.
 //
 // Endpoints:
-//   GET /frame.jpg               current picture (WIDTH x HEIGHT, already rotated)
+//   GET /frame.jpg               current picture (WIDTH x HEIGHT, already rotated; ETag, 304 when unchanged)
 //   GET /tap?x=&y=               click at display coordinates
 //   GET /swipe?x1=&y1=&x2=&y2=   scroll the card by the swipe distance
 //   GET /healthz                 "ok" once connected and rendered
+import { createHash } from "node:crypto";
 import http from "node:http";
 import puppeteer from "puppeteer";
 
@@ -275,7 +276,16 @@ const server = http.createServer((req, res) => {
   serial(async () => {
     try {
       if (url.pathname === "/frame.jpg") {
-        done(200, await frame(), "image/jpeg");
+        // ETag: an unchanged picture answers 304, so the display skips decoding and redrawing it
+        const jpeg = await frame();
+        const etag = `"${createHash("sha1").update(jpeg).digest("hex").slice(0, 16)}"`;
+        if (req.headers["if-none-match"] === etag) {
+          res.writeHead(304, { etag, "cache-control": "no-cache" });
+          res.end();
+        } else {
+          res.writeHead(200, { etag, "content-type": "image/jpeg", "cache-control": "no-cache" });
+          res.end(jpeg);
+        }
       } else if (url.pathname === "/tap") {
         lastTouch = Date.now();
         await page.mouse.click(n("x"), n("y"));
