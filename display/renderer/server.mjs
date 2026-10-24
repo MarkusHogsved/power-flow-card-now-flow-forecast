@@ -59,43 +59,56 @@ const send = (msg) =>
     }, 30_000);
   });
 
-const connect = () =>
-  new Promise((resolve) => {
-    ws = new WS(`${HA_URL.replace(/^http/, "ws")}/api/websocket`);
-    ws.onmessage = async (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "auth_required") {
-        ws.send(JSON.stringify({ type: "auth", access_token: HA_TOKEN }));
-      } else if (msg.type === "auth_invalid") {
-        console.error("Home Assistant rejected the token:", msg.message);
-        process.exit(1);
-      } else if (msg.type === "auth_ok") {
-        connected = true;
-        log("connected to Home Assistant", msg.ha_version);
-        for (const s of await send({ type: "get_states" })) states[s.entity_id] = s;
-        await send({ type: "subscribe_events", event_type: "state_changed" });
-        resolve();
-      } else if (msg.type === "event" && msg.event?.event_type === "state_changed") {
-        const { entity_id, new_state } = msg.event.data;
-        if (new_state) states[entity_id] = new_state;
-        else delete states[entity_id];
-        dirty = true;
-      } else if (msg.type === "result" && pending.has(msg.id)) {
-        const p = pending.get(msg.id);
-        pending.delete(msg.id);
-        if (msg.success) p.resolve(msg.result);
-        else p.reject(new Error(msg.error?.message ?? "request failed"));
-      }
-    };
-    ws.onclose = () => {
-      connected = false;
-      for (const p of pending.values()) p.reject(new Error("connection closed"));
-      pending.clear();
-      log("connection to Home Assistant closed, reconnecting in 10 s");
-      setTimeout(() => connect().then(() => (dirty = true)), 10_000);
-    };
-    ws.onerror = () => {}; // onclose follows and reconnects
-  });
+// Resolves on the first successful login, even if Home Assistant was not up
+// yet and it took several attempts (e.g. both started by the same compose)
+let firstLogin;
+const ready = new Promise((resolve) => (firstLogin = resolve));
+
+const connect = () => {
+  ws = new WS(`${HA_URL.replace(/^http/, "ws")}/api/websocket`);
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "auth_required") {
+      ws.send(JSON.stringify({ type: "auth", access_token: HA_TOKEN }));
+    } else if (msg.type === "auth_invalid") {
+      console.error("Home Assistant rejected the token:", msg.message);
+      process.exit(1);
+    } else if (msg.type === "auth_ok") {
+      connected = true;
+      log("connected to Home Assistant", msg.ha_version);
+      for (const s of await send({ type: "get_states" })) states[s.entity_id] = s;
+      await send({ type: "subscribe_events", event_type: "state_changed" });
+      dirty = true;
+      firstLogin();
+    } else if (msg.type === "event" && msg.event?.event_type === "state_changed") {
+      const { entity_id, new_state } = msg.event.data;
+      if (new_state) states[entity_id] = new_state;
+      else delete states[entity_id];
+      dirty = true;
+    } else if (msg.type === "result" && pending.has(msg.id)) {
+      const p = pending.get(msg.id);
+      pending.delete(msg.id);
+      if (msg.success) p.resolve(msg.result);
+      else p.reject(new Error(msg.error?.message ?? "request failed"));
+    }
+  };
+  // Node's WebSocket fires only "error" (no "close") when the connection is
+  // refused, e.g. while Home Assistant is still starting - reconnect on both,
+  // once per socket
+  const socket = ws;
+  let retrying = false;
+  const retry = () => {
+    if (retrying || socket !== ws) return;
+    retrying = true;
+    connected = false;
+    for (const p of pending.values()) p.reject(new Error("connection closed"));
+    pending.clear();
+    log("no connection to Home Assistant, retrying in 10 s");
+    setTimeout(connect, 10_000);
+  };
+  ws.onclose = retry;
+  ws.onerror = retry;
+};
 
 /** The card's config: CARD_CONFIG, or the CARD_INDEX-th card of our type on DASHBOARD. */
 const loadCardConfig = async () => {
@@ -207,7 +220,8 @@ const pushHass = async () => {
 };
 
 const start = async () => {
-  await connect();
+  connect();
+  await ready;
   const [config, script] = await Promise.all([loadCardConfig(), loadCardScript()]);
   browser = await puppeteer.launch({
     headless: env("HEADLESS", "true") === "shell" ? "shell" : true,
