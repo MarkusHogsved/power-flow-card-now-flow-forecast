@@ -1,0 +1,277 @@
+# Power Flow Card on a Waveshare ESP32-S3-Touch-LCD-7 (800x480, GT911 touch).
+#
+# The card itself is rendered by display/renderer (headless Chromium) and
+# fetched as a JPEG. The picture is already rotated, so the panel is used in
+# its native landscape orientation while the card reads portrait. Taps and
+# swipes are sent back to the renderer, which replays them in the card.
+#
+# Set renderer_url to where the renderer runs. The hardware part (display
+# pins, CH422G expander, GT911) is the board's standard setup.
+substitutions:
+  name: energy-display
+  friendly_name: Energy display
+  renderer_url: http://192.168.2.160:8099
+  refresh: 15s           # how often a new picture is fetched (a touch fetches at once)
+  sleep_after_min: "10"  # backlight off after this many minutes untouched, at night
+  night_from: "22"       # night = from this hour ...
+  night_to: "6"          # ... to this hour
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.6.0
+  platformio_options:
+    build_flags: "-DBOARD_HAS_PSRAM"
+    board_build.arduino.memory_type: qio_opi
+    board_build.flash_mode: dio
+    board_upload.maximum_ram_size: 524288
+
+esp32:
+  board: esp32s3box
+  variant: ESP32S3
+  flash_size: 8MB
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_DATA_CACHE_64KB: "y"
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: "y"
+      CONFIG_ESPTOOLPY_FLASHSIZE_8MB: "y"
+      CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240: "y"
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
+      CONFIG_SPIRAM_RODATA: "y"
+      CONFIG_COMPILER_OPTIMIZATION_PERF: "y"
+      # Room for picture downloads that linger next to the API connection
+      CONFIG_LWIP_MAX_SOCKETS: "16"
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  logs:
+    component: ERROR
+
+api:
+
+ota:
+  - platform: esphome
+    # Picture downloads take most of the device's time; pause them so the
+    # update gets through
+    on_begin:
+      - component.suspend: frame
+    on_error:
+      - component.resume: frame
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # The default (light) power saving throttles downloads to ~10 KB/s
+  power_save_mode: none
+  # Own hotspot if the network cannot be reached, to fix the settings
+  ap:
+    ssid: ${name}
+
+captive_portal:
+
+time:
+  - platform: homeassistant
+    id: ha_time
+
+http_request:
+  timeout: 10s
+  verify_ssl: false
+  buffer_size_rx: 8192   # default 512 made a 35 KB picture take ~3 s
+
+# ---------------------------------------------------------------- Hardware
+
+i2c:
+  sda: GPIO08
+  scl: GPIO09
+  id: bus_a
+
+ch422g:
+  - id: ch422g_hub
+
+switch:
+  - platform: restart
+    name: Restart
+  - platform: gpio
+    id: backlight
+    name: Backlight
+    pin:
+      ch422g: ch422g_hub
+      number: 2
+      mode:
+        output: true
+    restore_mode: ALWAYS_ON
+
+display:
+  - platform: rpi_dpi_rgb
+    id: panel
+    update_interval: never
+    auto_clear_enabled: false
+    color_order: RGB
+    pclk_frequency: 16MHZ
+    dimensions:
+      width: 800
+      height: 480
+    de_pin:
+      number: 5
+    hsync_pin:
+      number: 46
+      ignore_strapping_warning: true
+    vsync_pin:
+      number: 3
+      ignore_strapping_warning: true
+    pclk_pin: 7
+    pclk_inverted: true
+    reset_pin:
+      ch422g: ch422g_hub
+      number: 3
+    hsync_back_porch: 8
+    hsync_front_porch: 8
+    hsync_pulse_width: 4
+    vsync_back_porch: 16
+    vsync_front_porch: 16
+    vsync_pulse_width: 4
+    data_pins:
+      red: [1, 2, 42, 41, 40]
+      blue: [14, 38, 18, 17, 10]
+      green: [39, 0, 45, 48, 47, 21]
+    lambda: |-
+      // Nothing to draw until the first picture has arrived
+      if (id(frame_ready)) it.image(0, 0, id(frame));
+      // A ring where the screen was touched, until the next picture arrives
+      if (id(show_touch)) {
+        it.circle(id(touch_x0), id(touch_y0), 26, Color(255, 255, 255));
+        it.circle(id(touch_x0), id(touch_y0), 27, Color(255, 255, 255));
+        it.circle(id(touch_x0), id(touch_y0), 28, Color(80, 80, 80));
+      }
+
+# ---------------------------------------------------------------- The card
+
+online_image:
+  - id: frame
+    url: ${renderer_url}/frame.jpg
+    format: JPEG
+    type: RGB565
+    buffer_size: 65536     # the largest allowed; the renderer keeps pictures below it
+    update_interval: ${refresh}
+    on_download_finished:
+      - lambda: |-
+          if (!cached) id(frame_ready) = true;
+          id(show_touch) = false;
+          id(last_frame_ms) = millis();
+      # cached = the renderer answered 304 (picture unchanged): only the ring to remove
+      - component.update: panel
+      # A tap or swipe came while this picture was downloading: fetch again now
+      - if:
+          condition:
+            lambda: return id(refetch);
+          then:
+            - lambda: id(refetch) = false;
+            - component.update: frame
+    on_error:
+      - logger.log: "Could not fetch a picture from the renderer"
+
+# ---------------------------------------------------------------- Touch
+
+globals:
+  - id: last_frame_ms
+    type: uint32_t
+  - id: input_seq
+    type: uint32_t
+  - id: show_touch
+    type: bool
+  - id: refetch
+    type: bool
+  - id: frame_ready
+    type: bool
+    initial_value: "false"
+  - id: touch_x0
+    type: int
+  - id: touch_y0
+    type: int
+  - id: touch_x1
+    type: int
+  - id: touch_y1
+    type: int
+  - id: last_touch_ms
+    type: uint32_t
+  - id: woke_up
+    type: bool
+
+touchscreen:
+  platform: gt911
+  id: touch
+  interrupt_pin: GPIO4
+  reset_pin:
+    ch422g: ch422g_hub
+    number: 1
+    mode: OUTPUT
+  on_touch:
+    - lambda: |-
+        id(touch_x0) = id(touch_x1) = touch.x;
+        id(touch_y0) = id(touch_y1) = touch.y;
+        id(last_touch_ms) = millis();
+        // A touch on a dark screen only wakes it up
+        id(woke_up) = !id(backlight).state;
+    - switch.turn_on: backlight
+  on_update:
+    - lambda: |-
+        for (auto t : touches) {
+          id(touch_x1) = t.x;
+          id(touch_y1) = t.y;
+        }
+  # Taps and swipes travel in the picture URL (?tap=x,y&n=7), so there is
+  # only one HTTP request at a time and its answer shows the result. n is a
+  # sequence number; the renderer ignores an n it has already seen, as the
+  # periodic refresh keeps fetching the same URL.
+  on_release:
+    - if:
+        condition:
+          lambda: return !id(woke_up);
+        then:
+          - lambda: |-
+              id(input_seq)++;
+              // Moved more than 40 px: a swipe, otherwise a tap (shown with a ring)
+              id(show_touch) = abs(id(touch_x1) - id(touch_x0)) + abs(id(touch_y1) - id(touch_y0)) <= 40;
+              id(refetch) = true;
+          - component.update: panel
+          - online_image.set_url:
+              id: frame
+              url: !lambda |-
+                char buf[160];
+                if (id(show_touch))
+                  snprintf(buf, sizeof(buf), "${renderer_url}/frame.jpg?tap=%d,%d&n=%u",
+                           id(touch_x0), id(touch_y0), (unsigned) id(input_seq));
+                else
+                  snprintf(buf, sizeof(buf), "${renderer_url}/frame.jpg?swipe=%d,%d,%d,%d&n=%u",
+                           id(touch_x0), id(touch_y0), id(touch_x1), id(touch_y1), (unsigned) id(input_seq));
+                return std::string(buf);
+
+interval:
+  # Watchdog: no picture for 90 s (network stuck, e.g. out of sockets) -> restart
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            lambda: return millis() > 120000 && millis() - id(last_frame_ms) > 90000;
+          then:
+            - logger.log:
+                level: WARN
+                format: "No picture for 90 s, restarting"
+            - lambda: App.safe_reboot();
+  # Backlight off at night after a while untouched; a touch turns it on again
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              auto now = id(ha_time).now();
+              if (!now.is_valid()) return false;
+              int from = ${night_from}, to = ${night_to};
+              bool night = from > to ? (now.hour >= from || now.hour < to) : (now.hour >= from && now.hour < to);
+              return night && millis() - id(last_touch_ms) > ${sleep_after_min} * 60000UL;
+          then:
+            - switch.turn_off: backlight

@@ -1,0 +1,25 @@
+# Renderer for small displays. Runs next to Home Assistant on the local
+# network; the display fetches http://<this host>:8099/frame.jpg.
+# The token comes from a .env file next to this file: ENERGY_TOKEN=...
+services:
+  card-renderer:
+    image: ghcr.io/puppeteer/puppeteer:24.10.0
+    container_name: card-renderer
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      HA_URL: "http://localhost:8123"
+      HA_TOKEN: "${ENERGY_TOKEN}"
+      DASHBOARD: "dashboard-greenhouse"
+      CARD_INDEX: "0"
+      WIDTH: "800"
+      HEIGHT: "480"
+      ROTATE: "90"
+      IDLE_RESET_S: "120"
+      PORT: "8099"
+      RENDERER_URL: "https://raw.githubusercontent.com/MarkusHogsved/power-flow-card-now-flow-forecast/main/display/renderer/server.mjs"
+    # Fetches the renderer from the repository at start, so a restart updates it
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        node -e "fetch(process.env.RENDERER_URL).then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status))).then(t => require('fs').writeFileSync('/home/pptruser/server.mjs', t))" && exec node /home/pptruser/server.mjs
