@@ -282,8 +282,15 @@ const serial = (fn) => (queue = queue.then(fn, fn));
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://x");
   const n = (k) => Number(url.searchParams.get(k));
+  // Content-Length and Connection: close on every answer - ESPHome's HTTP
+  // client otherwise waits for the connection to close (about a minute)
   const done = (code, body = "", type = "text/plain") => {
-    res.writeHead(code, { "content-type": type, "cache-control": "no-store" });
+    res.writeHead(code, {
+      "content-type": type,
+      "content-length": Buffer.byteLength(body),
+      "cache-control": "no-store",
+      connection: "close",
+    });
     res.end(body);
   };
   if (!page) return done(503, "starting");
@@ -294,10 +301,16 @@ const server = http.createServer((req, res) => {
         const jpeg = await frame();
         const etag = `"${createHash("sha1").update(jpeg).digest("hex").slice(0, 16)}"`;
         if (req.headers["if-none-match"] === etag) {
-          res.writeHead(304, { etag, "cache-control": "no-cache" });
+          res.writeHead(304, { etag, "cache-control": "no-cache", connection: "close" });
           res.end();
         } else {
-          res.writeHead(200, { etag, "content-type": "image/jpeg", "cache-control": "no-cache" });
+          res.writeHead(200, {
+            etag,
+            "content-type": "image/jpeg",
+            "content-length": jpeg.length,
+            "cache-control": "no-cache",
+            connection: "close",
+          });
           res.end(jpeg);
         }
       } else if (url.pathname === "/tap") {
