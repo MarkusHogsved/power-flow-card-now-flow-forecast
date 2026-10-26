@@ -46,10 +46,16 @@ export const styles = css`
     display: inline-flex;
     padding: 2px;
     border: none;
-    background: transparent;
+    border-radius: 50%;
+    background: none;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
     color: var(--nff-muted);
     cursor: pointer;
     --mdc-icon-size: 16px;
+  }
+  .reason-info:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
   }
   .reason-detail {
     margin-top: 6px;

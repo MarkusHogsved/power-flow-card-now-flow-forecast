@@ -7,7 +7,8 @@ export interface HassEntity {
 
 export interface HomeAssistant {
   states: Record<string, HassEntity>;
-  locale?: { language?: string };
+  /** time_format: the profile's clock setting ("language", "system", "24" or "12"). */
+  locale?: { language?: string; time_format?: string };
   language?: string;
   /** Websocket call - used by Review to read recorder history. */
   callWS?: <T>(msg: Record<string, unknown>) => Promise<T>;
