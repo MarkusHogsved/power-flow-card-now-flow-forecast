@@ -250,6 +250,8 @@ const EXPORT_RUN_W = 500;
 
 /** The session cost counter updates about once a minute, so read it a little after the run. */
 const SESSION_COST_LAG_MS = 5 * MINUTE;
+/** A vehicle's battery level can lag this much behind the charge. */
+const VEHICLE_SOC_LAG_MS = 30 * MINUTE;
 
 const BATTERY_COLOR = "#4FC1B0";
 const SOLAR_COLOR = "#F5B942";
@@ -360,6 +362,10 @@ export const computeReview = (input: ReviewInput): Review => {
     for (const e of events.slice(first)) {
       if (e.runs) continue;
       e.vehicle = { power: load.power, soc: load.soc };
+      // A car reports its level late (cloud polling, minutes apart): the level it
+      // arrived with can come after the charge started, the final one after it ended.
+      e.socFrom = extreme(load.soc, e.start, Math.min(e.start + VEHICLE_SOC_LAG_MS, end), "min")?.v ?? e.socFrom;
+      e.socTo = extreme(load.soc, e.end, Math.min(e.end + VEHICLE_SOC_LAG_MS, end), "max")?.v ?? e.socTo;
       if (load.sessionCost) e.cost = sessionCostOf(load.sessionCost, e.start, e.end, end);
     }
   }
