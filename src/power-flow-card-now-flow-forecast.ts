@@ -13,7 +13,7 @@ import { renderNow } from "./views/now";
 import { renderReview, type ReviewHours, type ReviewState } from "./views/review";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.3.3";
+export const VERSION = "0.3.4";
 const VIEWS: ViewName[] = ["now", "flow", "forecast", "review"];
 /** Review history is fetched again when older than this. */
 const REVIEW_MAX_AGE_MS = 5 * 60_000;

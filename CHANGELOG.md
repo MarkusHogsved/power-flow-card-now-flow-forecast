@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.4
+
+- The import reason's time follows the profile's time format, so a 24 h
+  clock shows "until 13:00" even with an English interface.
+- No dark box around the info button after tapping it.
+
 ## 0.3.3
 
 - New `grid.import_reason`: while the home buys from the grid, a line under

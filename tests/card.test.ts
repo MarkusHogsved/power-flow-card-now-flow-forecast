@@ -195,6 +195,15 @@ describe("import reason", () => {
     expect(root(card).querySelector(".reason span")?.textContent).toMatch(/^Cheap power: battery full, kept · until 12:00/);
   });
 
+  test("follows the profile's 24 h clock even with an English interface", async () => {
+    const card = document.createElement("power-flow-card-now-flow-forecast") as PowerFlowCardNowFlowForecast;
+    card.setConfig(config);
+    card.hass = { ...makeHass(reason("2026-10-26T13:00:00+01:00")), locale: { language: "en", time_format: "24" } };
+    document.body.appendChild(card);
+    await card.updateComplete;
+    expect(root(card).querySelector(".reason span")?.textContent).toMatch(/until 13:00$/);
+  });
+
   test("says tomorrow when the reason ends on a later day", async () => {
     const card = await mount(config, reason("2026-10-27T05:30:00+01:00"));
     expect(root(card).querySelector(".reason span")?.textContent).toContain("until tomorrow 05:30");
