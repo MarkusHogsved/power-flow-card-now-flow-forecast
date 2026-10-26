@@ -1,5 +1,5 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import { formatNumber, formatPower } from "./hass";
+import { formatNumber, formatPower, formatUntil } from "./hass";
 import { buildReviewInput, fetchHistory, reviewEntities } from "./history";
 import { computeModel, type Model } from "./model";
 import { computeReview } from "./review";
@@ -13,7 +13,7 @@ import { renderNow } from "./views/now";
 import { renderReview, type ReviewHours, type ReviewState } from "./views/review";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.3.2";
+export const VERSION = "0.3.3";
 const VIEWS: ViewName[] = ["now", "flow", "forecast", "review"];
 /** Review history is fetched again when older than this. */
 const REVIEW_MAX_AGE_MS = 5 * 60_000;
@@ -46,6 +46,7 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
     _config: { state: true },
     _view: { state: true },
     _review: { state: true },
+    _reasonOpen: { state: true },
   };
 
   hass?: HomeAssistant;
@@ -54,6 +55,8 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
   private _review: ReviewState = { hours: 24, loading: false };
   private _reviewFetchedAt = 0;
   private _reviewRequest = 0;
+  /** The import reason's longer explanation is unfolded. */
+  private _reasonOpen = false;
 
   setConfig(config: CardConfig): void {
     if (!config?.home?.entity) throw new Error("home.entity is required");
@@ -145,6 +148,7 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
           <div class="subtitle">
             ${formatPower(hass, model.homeW)}${detail[model.status] ? ` · ${detail[model.status]}` : ""}
           </div>
+          ${model.status === "importing" ? this._importReason() : nothing}
         </div>
         ${model.price !== null
           ? html`<div class="price" @click=${() => this._moreInfo(this._config?.grid?.price)}>
@@ -154,6 +158,39 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
             </div>`
           : nothing}
       </div>
+    `;
+  }
+
+  /** "Why we buy, and until when" from grid.import_reason, with the detail behind an info button. */
+  private _importReason() {
+    const hass = this.hass as HomeAssistant;
+    const entityId = this._config?.grid?.import_reason;
+    const entity = entityId ? hass.states[entityId] : undefined;
+    if (!entity || !entity.state || ["unknown", "unavailable"].includes(entity.state)) return nothing;
+    const detail = typeof entity.attributes.detail === "string" ? entity.attributes.detail : "";
+    const untilRaw = entity.attributes.until;
+    const until = typeof untilRaw === "string" && untilRaw ? new Date(untilRaw) : null;
+    let untilText = "";
+    if (until && !Number.isNaN(until.getTime())) {
+      const u = formatUntil(hass, until, new Date());
+      untilText = t(u.tomorrow ? "reason.until_tomorrow" : "reason.until", { time: u.time });
+    }
+    return html`
+      <div class="reason">
+        <span @click=${() => this._moreInfo(entityId)}>${entity.state}${untilText ? ` · ${untilText}` : ""}</span>
+        ${detail
+          ? html`<button
+              type="button"
+              class="reason-info"
+              aria-label=${t("reason.more")}
+              aria-expanded=${this._reasonOpen ? "true" : "false"}
+              @click=${() => (this._reasonOpen = !this._reasonOpen)}
+            >
+              <ha-icon icon="mdi:information-outline"></ha-icon>
+            </button>`
+          : nothing}
+      </div>
+      ${detail && this._reasonOpen ? html`<div class="reason-detail">${detail}</div>` : nothing}
     `;
   }
 

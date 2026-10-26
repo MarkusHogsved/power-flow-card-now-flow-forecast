@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import pkg from "../package.json";
 import { PowerFlowCardNowFlowForecast, VERSION } from "../src/power-flow-card-now-flow-forecast";
 import type { CardConfig, HomeAssistant } from "../src/types";
@@ -169,5 +169,51 @@ describe("card", () => {
       await card.updateComplete;
       expect(root(card).querySelector(".view")).not.toBeNull();
     }
+  });
+});
+
+describe("import reason", () => {
+  // 07:30 local time; the reason ends 12:00 the same day or 05:30 the next
+  const now = new Date("2026-10-26T07:30:00+01:00");
+  const importing = { ...eveningStates, "sensor.grid": "2910", "sensor.growatt_power": "0", "sensor.victron_power": "0" };
+  const reason = (until: string, detail = "Battery First until 12:00, the battery is kept for later.") => ({
+    ...importing,
+    "sensor.why": ["Cheap power: battery full, kept", { until, detail }] as [string, Record<string, unknown>],
+  });
+  const config = { ...houseConfig, grid: { ...houseConfig.grid!, import_reason: "sensor.why" } };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  test("shows the reason and until when, while importing", async () => {
+    const card = await mount(config, reason("2026-10-26T12:00:00+01:00"));
+    expect(root(card).querySelector(".title")?.textContent).toBe("Buying from the grid");
+    // the clock follows hass.locale ("12:00 PM" in en, "12:00" in sv)
+    expect(root(card).querySelector(".reason span")?.textContent).toMatch(/^Cheap power: battery full, kept · until 12:00/);
+  });
+
+  test("says tomorrow when the reason ends on a later day", async () => {
+    const card = await mount(config, reason("2026-10-27T05:30:00+01:00"));
+    expect(root(card).querySelector(".reason span")?.textContent).toContain("until tomorrow 05:30");
+  });
+
+  test("the info button unfolds the detail", async () => {
+    const card = await mount(config, reason("2026-10-26T12:00:00+01:00"));
+    expect(root(card).querySelector(".reason-detail")).toBeNull();
+    root(card).querySelector<HTMLButtonElement>(".reason-info")!.click();
+    await card.updateComplete;
+    expect(root(card).querySelector(".reason-detail")?.textContent).toContain("kept for later");
+  });
+
+  test("hidden when not importing, and without an until or detail it is just the text", async () => {
+    const idle = await mount(config, { ...reason("2026-10-26T12:00:00+01:00"), "sensor.grid": "0" });
+    expect(root(idle).querySelector(".reason")).toBeNull();
+    document.body.innerHTML = "";
+    const bare = await mount(config, { ...importing, "sensor.why": ["Unknown cause", {}] });
+    expect(root(bare).querySelector(".reason span")?.textContent).toBe("Unknown cause");
+    expect(root(bare).querySelector(".reason-info")).toBeNull();
   });
 });

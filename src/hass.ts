@@ -48,5 +48,11 @@ export const formatPower = (hass: HomeAssistant, watts: number): string => {
 export const formatEnergy = (hass: HomeAssistant, kwh: number): string =>
   `${formatNumber(hass, kwh, kwh < 10 ? 1 : 0)} kWh`;
 
+/** Clock time ("12:00"), with "tomorrow" when the time is on a later day than `now`. */
+export const formatUntil = (hass: HomeAssistant, until: Date, now: Date): { time: string; tomorrow: boolean } => ({
+  time: new Intl.DateTimeFormat(locale(hass), { hour: "2-digit", minute: "2-digit" }).format(until),
+  tomorrow: until.toDateString() !== now.toDateString() && until > now,
+});
+
 export const formatPercent = (hass: HomeAssistant, value: number): string =>
   `${formatNumber(hass, Math.round(value), 0)} %`;

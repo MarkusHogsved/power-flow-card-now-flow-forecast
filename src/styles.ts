@@ -31,6 +31,35 @@ export const styles = css`
   .subtitle {
     font-size: 13px;
   }
+  .reason {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--primary-text-color);
+  }
+  .reason span {
+    cursor: pointer;
+  }
+  .reason-info {
+    display: inline-flex;
+    padding: 2px;
+    border: none;
+    background: transparent;
+    color: var(--nff-muted);
+    cursor: pointer;
+    --mdc-icon-size: 16px;
+  }
+  .reason-detail {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--nff-chip);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--primary-text-color);
+  }
   .price {
     display: flex;
     flex-direction: column;
