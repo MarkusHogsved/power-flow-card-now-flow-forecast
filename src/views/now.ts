@@ -4,6 +4,7 @@ import { expectedImportKwh, readLoadCast, readSolarP10ByHour } from "../forecast
 import { COLORS, type BatteryState, type LoadState } from "../model";
 import { t } from "../strings";
 import type { ViewContext } from "./context";
+import { vehiclePanel } from "./vehicle";
 
 // Geometry of the diagram in a 400 x 372 box (nodes are placed in % of it).
 const BOX_W = 400;
@@ -67,21 +68,23 @@ const vehicleLines = (ctx: ViewContext, l: LoadState) => {
         : t("load.soc_to_limit", { soc: formatPercent(hass, l.soc), limit: formatPercent(hass, l.socLimit) });
   let left = "";
   let cost = "";
-  if (!atLimit && l.toLimitKwh) {
-    const energy = formatEnergy(hass, l.toLimitKwh);
+  const price = l.costPrice ?? m.price;
+  const currency = m.priceUnit.split("/")[0].trim();
+  const money = (v: number) => `${formatNumber(hass, v, 0)}${currency ? ` ${currency}` : ""}`;
+  const leftKwh = !atLimit && l.toLimitKwh ? l.toLimitKwh : 0;
+  if (l.sessionCost != null && (price !== null || !leftKwh)) {
+    cost = t("load.cost_session", { cost: money(l.sessionCost + leftKwh * (price ?? 0)) });
+  } else if (leftKwh && price !== null) {
+    cost = t(l.costPrice != null ? "load.cost_estimated" : "load.cost", { cost: money(leftKwh * price) });
+  }
+  if (leftKwh) {
+    const energy = formatEnergy(hass, leftKwh);
     if (l.powerW > 0) {
-      const finish = new Date(ctx.now.getTime() + (l.toLimitKwh / (l.powerW / 1000)) * 3_600_000);
+      const finish = new Date(ctx.now.getTime() + (leftKwh / (l.powerW / 1000)) * 3_600_000);
       const u = formatUntil(hass, finish, ctx.now);
       left = t(u.tomorrow ? "load.left_done_tomorrow" : "load.left_done", { energy, time: u.time });
     } else {
       left = t("load.left", { energy });
-    }
-    const price = l.costPrice ?? m.price;
-    if (price !== null) {
-      const currency = m.priceUnit.split("/")[0].trim();
-      cost = t(l.costPrice != null ? "load.cost_estimated" : "load.cost", {
-        cost: `${formatNumber(hass, l.toLimitKwh * price, 0)}${currency ? ` ${currency}` : ""}`,
-      });
     }
   }
   return html`
@@ -92,7 +95,12 @@ const vehicleLines = (ctx: ViewContext, l: LoadState) => {
 };
 
 const loadTile = (ctx: ViewContext, l: LoadState) => html`
-  <div class="load-tile" style="border-top-color: ${l.color}" @click=${() => ctx.moreInfo(l.entity)}>
+  <div
+    class="load-tile"
+    style="border-top-color: ${l.color}"
+    aria-expanded=${l.socEntity ? (ctx.vehicle?.entity === l.entity ? "true" : "false") : nothing}
+    @click=${() => (l.socEntity ? ctx.toggleVehicle(l.entity) : ctx.moreInfo(l.entity))}
+  >
     <ha-icon .icon=${l.icon} style="color: ${l.color}"></ha-icon>
     <span class="muted" style="font-size: 12px">${l.name}</span>
     <b style="font-size: 14px">${formatPower(ctx.hass, l.powerW)}</b>
@@ -219,6 +227,7 @@ export const renderNow = (ctx: ViewContext) => {
         ? html`
             <div class="section-title">${t("running_now")}</div>
             <div class="running">${m.running.map((l) => loadTile(ctx, l))}</div>
+            ${m.running.map((l) => vehiclePanel(ctx, l, ctx.vehicle))}
           `
         : nothing}
 

@@ -94,6 +94,8 @@ export interface LoadConfig {
   charge_efficiency?: number;
   /** Price per kWh for the cost line (e.g. a sensor that weighs in the house battery's value), instead of the spot price. */
   cost_price?: string;
+  /** What the current charging session has cost so far (an entity in the price's currency). The tile then shows the whole session: this plus what is left to the limit. */
+  session_cost?: string;
 }
 
 export interface LoadCastConfig {
