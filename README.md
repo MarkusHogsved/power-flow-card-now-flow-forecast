@@ -120,6 +120,7 @@ loadcast:
 | `grid.price` | Current electricity price. |
 | `grid.today_import` / `grid.today_export` | Energy bought / sold today (kWh). Bought today is also shown under the grid node in Now. |
 | `grid.today_cost` | What today's purchases cost, e.g. Tibber's *accumulated cost*. Shown under the grid node in Now, with the sensor's own unit. |
+| `grid.import_reason` | Why the home is buying from the grid. The entity's state is a short reason; optional attributes `until` (ISO time it ends) and `detail` (a longer explanation). Shown under the header while importing, as *reason · until 12:00*, with an info button for the detail. Typically a template sensor that reads what your automations have set up. |
 | `batteries[]` | `state_of_charge` (required), `entity` (power, positive = charging; one entity or a list that is summed; `invert_state` flips it) or `charge_entity` + `discharge_entity` (both positive, each one entity or a list), `name`, `icon`, `capacity_kwh` and `reserve_soc` (needed for *Will the battery last?*). |
 | `batteries[].inside_home` | `true` for a battery that charges from the home's own consumption, e.g. a UPS on a socket. Its level and power are shown, but it is left out of the flows and the Sankey, so its charging is not counted twice. |
 | `large_loads[]` | `entity`, `name`, `icon`, `color`, `threshold` (W, default 30). Shown under *Running now* only at or above the threshold. |

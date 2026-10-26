@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3
+
+- New `grid.import_reason`: while the home buys from the grid, a line under
+  the header says why and until when (the entity's state, plus its `until`
+  attribute). An info button unfolds the entity's `detail` attribute; tapping
+  the text opens the entity.
+
 ## 0.3.2
 
 - Now: under the grid node, *~x kWh more* – grid energy still expected

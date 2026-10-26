@@ -41,6 +41,12 @@ export interface GridConfig {
   today_export?: string;
   /** Cost of the energy bought today, in its own currency unit (e.g. Tibber "accumulated cost"). */
   today_cost?: string;
+  /**
+   * Why the home is buying from the grid right now. The state is a short
+   * reason; optional attributes `until` (ISO time the reason ends) and
+   * `detail` (longer explanation). Shown under the header while importing.
+   */
+  import_reason?: string;
 }
 
 /** One entity, or several whose values are summed (e.g. two BMS packs). */
