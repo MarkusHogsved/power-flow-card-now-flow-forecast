@@ -92,6 +92,8 @@ export interface LoadConfig {
   capacity_kwh?: number;
   /** Share of the energy that ends up in the battery, default 0.9. */
   charge_efficiency?: number;
+  /** Price per kWh for the cost line (e.g. a sensor that weighs in the house battery's value), instead of the spot price. */
+  cost_price?: string;
 }
 
 export interface LoadCastConfig {

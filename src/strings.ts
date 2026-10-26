@@ -24,6 +24,7 @@ const en = {
   "load.left_done": "{energy} to go · done {time}",
   "load.left_done_tomorrow": "{energy} to go · done tomorrow {time}",
   "load.cost": "~{cost} at spot price",
+  "load.cost_estimated": "~{cost} estimated",
   "node.solar": "Solar",
   "node.grid": "Grid",
   "node.home": "Home",

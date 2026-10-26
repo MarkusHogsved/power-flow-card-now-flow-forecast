@@ -42,6 +42,8 @@ export interface LoadState {
   socLimit?: number | null;
   /** Energy drawn to reach the limit (kWh, with losses); needs capacity_kwh. */
   toLimitKwh?: number | null;
+  /** Price per kWh from `cost_price`, null when not configured or unavailable. */
+  costPrice?: number | null;
 }
 
 /** Battery level, charge limit and energy still to draw for a load that is a vehicle. */
@@ -53,7 +55,8 @@ const vehicle = (hass: HomeAssistant, l: LoadConfig): Partial<LoadState> => {
     soc !== null && socLimit !== null && l.capacity_kwh
       ? (Math.max(socLimit - soc, 0) / 100) * l.capacity_kwh / (l.charge_efficiency ?? 0.9)
       : null;
-  return { soc, socLimit, toLimitKwh };
+  const costPrice = l.cost_price ? readNumber(hass, l.cost_price) : null;
+  return { soc, socLimit, toLimitKwh, costPrice };
 };
 
 export interface Flows {

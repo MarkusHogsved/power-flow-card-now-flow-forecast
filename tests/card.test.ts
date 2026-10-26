@@ -79,6 +79,23 @@ describe("card", () => {
     expect(text).toContain("~20 SEK at spot price");
   });
 
+  test("a vehicle with cost_price uses that price instead of the spot price", async () => {
+    const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc", soc_limit: 80, capacity_kwh: 79, cost_price: "sensor.ev_price" };
+    const card = await mount(
+      { ...houseConfig, large_loads: [ev] },
+      {
+        ...eveningStates,
+        "sensor.ev": "10400",
+        "sensor.ev_soc": ["61", { unit_of_measurement: "%" }],
+        "sensor.ev_price": ["0.074", { unit_of_measurement: "SEK/kWh" }],
+      },
+    );
+    const text = root(card).querySelector(".load-tile")?.textContent?.replace(/\s+/g, " ");
+    // 16.7 kWh × 0.074 ≈ 1 SEK.
+    expect(text).toContain("~1 SEK estimated");
+    expect(text).not.toContain("spot price");
+  });
+
   test("a vehicle at its limit says so and shows no cost", async () => {
     const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc", soc_limit: 80, capacity_kwh: 79 };
     const card = await mount(
