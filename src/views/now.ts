@@ -76,9 +76,12 @@ const vehicleLines = (ctx: ViewContext, l: LoadState) => {
     } else {
       left = t("load.left", { energy });
     }
-    if (m.price !== null) {
+    const price = l.costPrice ?? m.price;
+    if (price !== null) {
       const currency = m.priceUnit.split("/")[0].trim();
-      cost = t("load.cost", { cost: `${formatNumber(hass, l.toLimitKwh * m.price, 0)}${currency ? ` ${currency}` : ""}` });
+      cost = t(l.costPrice != null ? "load.cost_estimated" : "load.cost", {
+        cost: `${formatNumber(hass, l.toLimitKwh * price, 0)}${currency ? ` ${currency}` : ""}`,
+      });
     }
   }
   return html`

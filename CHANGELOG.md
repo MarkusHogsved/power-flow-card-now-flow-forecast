@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6
+
+- New `large_loads[].cost_price`: an entity with the price per kWh to use for
+  the vehicle's cost line instead of the spot price, e.g. a sensor that values
+  energy from the house battery. The line then reads *~x SEK estimated*.
+
 ## 0.3.5
 
 - A large load can be a vehicle: with `soc` the tile shows the battery level
