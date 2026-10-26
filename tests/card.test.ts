@@ -121,6 +121,39 @@ describe("card", () => {
     expect(text).toContain("~12 SEK this charge");
   });
 
+  test("tapping a vehicle tile unfolds its power and battery level history", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const calls: Record<string, unknown>[] = [];
+    const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc", soc_limit: 80, capacity_kwh: 79 };
+    const states = { ...eveningStates, "sensor.ev": "10400", "sensor.ev_soc": ["61", { unit_of_measurement: "%" }] } as typeof eveningStates;
+    const card = await mount({ ...houseConfig, large_loads: [ev] }, states);
+    const hass = makeHass(states);
+    hass.callWS = (async (msg: Record<string, unknown>) => {
+      calls.push(msg);
+      return {
+        "sensor.ev": [{ s: "0", lu: now - 20 * 3600 }, { s: "10400", lu: now - 3600 }],
+        "sensor.ev_soc": [{ s: "48", lu: now - 20 * 3600 }, { s: "61", lu: now - 60 }],
+      };
+    }) as HomeAssistant["callWS"];
+    card.hass = hass;
+    await card.updateComplete;
+    const tile = root(card).querySelector<HTMLElement>(".load-tile")!;
+    tile.click();
+    await card.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await card.updateComplete;
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ type: "history/history_during_period", entity_ids: ["sensor.ev", "sensor.ev_soc"] });
+    const panel = root(card).querySelector(".vehicle-panel");
+    expect(panel?.textContent).toContain("EV · last 12 h");
+    expect(panel?.querySelectorAll("svg.chart path")).toHaveLength(2);
+    expect(panel?.querySelector("svg.chart line")).not.toBeNull();
+    // tapping again folds it
+    root(card).querySelector<HTMLElement>(".load-tile")!.click();
+    await card.updateComplete;
+    expect(root(card).querySelector(".vehicle-panel")).toBeNull();
+  });
+
   test("a vehicle at its limit says so and shows no cost", async () => {
     const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc", soc_limit: 80, capacity_kwh: 79 };
     const card = await mount(

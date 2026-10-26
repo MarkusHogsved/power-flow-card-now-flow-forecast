@@ -4,6 +4,7 @@ import { expectedImportKwh, readLoadCast, readSolarP10ByHour } from "../forecast
 import { COLORS, type BatteryState, type LoadState } from "../model";
 import { t } from "../strings";
 import type { ViewContext } from "./context";
+import { vehiclePanel } from "./vehicle";
 
 // Geometry of the diagram in a 400 x 372 box (nodes are placed in % of it).
 const BOX_W = 400;
@@ -94,7 +95,12 @@ const vehicleLines = (ctx: ViewContext, l: LoadState) => {
 };
 
 const loadTile = (ctx: ViewContext, l: LoadState) => html`
-  <div class="load-tile" style="border-top-color: ${l.color}" @click=${() => ctx.moreInfo(l.entity)}>
+  <div
+    class="load-tile"
+    style="border-top-color: ${l.color}"
+    aria-expanded=${l.socEntity ? (ctx.vehicle?.entity === l.entity ? "true" : "false") : nothing}
+    @click=${() => (l.socEntity ? ctx.toggleVehicle(l.entity) : ctx.moreInfo(l.entity))}
+  >
     <ha-icon .icon=${l.icon} style="color: ${l.color}"></ha-icon>
     <span class="muted" style="font-size: 12px">${l.name}</span>
     <b style="font-size: 14px">${formatPower(ctx.hass, l.powerW)}</b>
@@ -221,6 +227,7 @@ export const renderNow = (ctx: ViewContext) => {
         ? html`
             <div class="section-title">${t("running_now")}</div>
             <div class="running">${m.running.map((l) => loadTile(ctx, l))}</div>
+            ${m.running.map((l) => vehiclePanel(ctx, l, ctx.vehicle))}
           `
         : nothing}
 

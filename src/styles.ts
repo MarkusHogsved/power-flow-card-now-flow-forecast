@@ -232,6 +232,32 @@ export const styles = css`
   .load-tile ha-icon {
     --mdc-icon-size: 22px;
   }
+  .vehicle-panel {
+    margin-top: 8px;
+    background: var(--nff-chip);
+    border-radius: 12px;
+    padding: 8px 10px;
+  }
+  .vehicle-panel .legend {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .vehicle-links {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .vehicle-links button {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 0;
+  }
   .load-line {
     font-size: 12px;
     line-height: 1.3;

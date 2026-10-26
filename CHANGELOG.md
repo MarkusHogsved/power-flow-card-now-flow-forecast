@@ -6,6 +6,9 @@
 - New `large_loads[].session_cost`: what the current charging session has
   cost so far. The tile then shows the whole session, *~x SEK this charge* –
   the cost so far plus what is left to the limit.
+- Tapping a vehicle tile unfolds its charging power and battery level over
+  the last 12 h in one chart, with the charge limit as a dashed line (refreshed
+  every minute while open). Buttons below open each entity's own history.
 
 ## 0.3.6
 

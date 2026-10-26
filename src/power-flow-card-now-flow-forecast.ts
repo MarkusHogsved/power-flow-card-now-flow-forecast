@@ -11,12 +11,15 @@ import { renderFlow } from "./views/flow";
 import { renderForecast } from "./views/forecast";
 import { renderNow } from "./views/now";
 import { renderReview, type ReviewHours, type ReviewState } from "./views/review";
+import { VEHICLE_HOURS, type VehicleChartState } from "./views/vehicle";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
 export const VERSION = "0.3.7";
 const VIEWS: ViewName[] = ["now", "flow", "forecast", "review"];
 /** Review history is fetched again when older than this. */
 const REVIEW_MAX_AGE_MS = 5 * 60_000;
+/** An unfolded vehicle tile refreshes its history at most this often. */
+const VEHICLE_MAX_AGE_MS = 60_000;
 
 const storageKey = (config: CardConfig, what = "view"): string => `${CARD_TYPE}:${what}:${config.view_key ?? "default"}`;
 
@@ -47,6 +50,7 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
     _view: { state: true },
     _review: { state: true },
     _reasonOpen: { state: true },
+    _vehicle: { state: true },
   };
 
   hass?: HomeAssistant;
@@ -57,6 +61,10 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
   private _reviewRequest = 0;
   /** The import reason's longer explanation is unfolded. */
   private _reasonOpen = false;
+  /** History under an unfolded vehicle tile. */
+  private _vehicle?: VehicleChartState;
+  private _vehicleFetchedAt = 0;
+  private _vehicleRequest = 0;
 
   setConfig(config: CardConfig): void {
     if (!config?.home?.entity) throw new Error("home.entity is required");
@@ -101,6 +109,14 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
   // same render instead of scheduling another one.
   protected override willUpdate(changed: PropertyValues): void {
     super.willUpdate(changed);
+    if (
+      this._vehicle &&
+      !this._vehicle.loading &&
+      this.hass?.callWS &&
+      Date.now() - this._vehicleFetchedAt >= VEHICLE_MAX_AGE_MS
+    ) {
+      void this._loadVehicle();
+    }
     if (this._view !== "review" || !this.hass?.callWS || !this._config || this._review.loading) return;
     if (Date.now() - this._reviewFetchedAt < REVIEW_MAX_AGE_MS) return;
     void this._loadReview();
@@ -124,6 +140,34 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
       if (request !== this._reviewRequest) return;
       // keep the last result, if any, and show the error with it
       this._review = { ...this._review, loading: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  private _toggleVehicle = (entityId: string): void => {
+    if (this._vehicle?.entity === entityId) {
+      this._vehicle = undefined;
+      return;
+    }
+    this._vehicle = { entity: entityId, loading: false };
+    this._vehicleFetchedAt = 0;
+  };
+
+  private async _loadVehicle(): Promise<void> {
+    const hass = this.hass as HomeAssistant;
+    const entity = (this._vehicle as VehicleChartState).entity;
+    const soc = this._config?.large_loads?.find((l) => l.entity === entity)?.soc;
+    const request = ++this._vehicleRequest;
+    const end = Date.now();
+    const start = end - VEHICLE_HOURS * 3_600_000;
+    this._vehicleFetchedAt = end;
+    this._vehicle = { ...(this._vehicle as VehicleChartState), loading: true };
+    try {
+      const history = await fetchHistory(hass, soc ? [entity, soc] : [entity], start, end);
+      if (request !== this._vehicleRequest || this._vehicle?.entity !== entity) return;
+      this._vehicle = { entity, loading: false, start, end, power: history[entity], soc: soc ? history[soc] : undefined };
+    } catch (err) {
+      if (request !== this._vehicleRequest || this._vehicle?.entity !== entity) return;
+      this._vehicle = { ...this._vehicle, loading: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 
@@ -203,6 +247,8 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
       model,
       now: new Date(),
       moreInfo: this._moreInfo,
+      vehicle: this._vehicle,
+      toggleVehicle: this._toggleVehicle,
     };
     return html`
       <ha-card>

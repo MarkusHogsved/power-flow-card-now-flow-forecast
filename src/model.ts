@@ -39,6 +39,8 @@ export interface LoadState {
   entity: string;
   /** Vehicles: battery level and charge limit (%), null when unknown. */
   soc?: number | null;
+  /** The battery level entity, when the load is a vehicle. */
+  socEntity?: string;
   socLimit?: number | null;
   /** Energy drawn to reach the limit (kWh, with losses); needs capacity_kwh. */
   toLimitKwh?: number | null;
@@ -59,7 +61,7 @@ const vehicle = (hass: HomeAssistant, l: LoadConfig): Partial<LoadState> => {
       : null;
   const costPrice = l.cost_price ? readNumber(hass, l.cost_price) : null;
   const sessionCost = l.session_cost ? readNumber(hass, l.session_cost) : null;
-  return { soc, socLimit, toLimitKwh, costPrice, sessionCost };
+  return { soc, socEntity: l.soc, socLimit, toLimitKwh, costPrice, sessionCost };
 };
 
 export interface Flows {

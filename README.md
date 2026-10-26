@@ -124,7 +124,7 @@ loadcast:
 | `batteries[]` | `state_of_charge` (required), `entity` (power, positive = charging; one entity or a list that is summed; `invert_state` flips it) or `charge_entity` + `discharge_entity` (both positive, each one entity or a list), `name`, `icon`, `capacity_kwh` and `reserve_soc` (needed for *Will the battery last?*). |
 | `batteries[].inside_home` | `true` for a battery that charges from the home's own consumption, e.g. a UPS on a socket. Its level and power are shown, but it is left out of the flows and the Sankey, so its charging is not counted twice. |
 | `large_loads[]` | `entity`, `name`, `icon`, `color`, `threshold` (W, default 30). Shown under *Running now* only at or above the threshold. |
-| `large_loads[].soc` | A vehicle's battery level (%), shown on its tile. |
+| `large_loads[].soc` | A vehicle's battery level (%), shown on its tile. Tapping the tile unfolds its power and battery level over the last 12 h in one chart. |
 | `large_loads[].soc_limit` | Charge limit: an entity (%), e.g. the car's charging limit, or a fixed number. The tile shows *61 % → 80 %*, or *at limit*. |
 | `large_loads[].capacity_kwh` | Battery size (kWh). Adds energy left to the limit, finish time at the current power and the cost at the current spot price. |
 | `large_loads[].charge_efficiency` | Share of the energy that ends up in the battery, default 0.9. |
