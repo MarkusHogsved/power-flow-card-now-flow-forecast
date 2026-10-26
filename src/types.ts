@@ -36,8 +36,12 @@ export interface GridConfig {
   /** Grid power. Positive = import, negative = export (flip with invert_state). */
   entity: string;
   invert_state?: boolean;
-  /** Current electricity price. */
+  /** Current electricity price - what a bought kWh costs. */
   price?: string;
+  /** What a sold kWh earns, when it differs from `price` (Review: sold energy and export events). */
+  sell_price?: string;
+  /** Label above the price in the header, default "Spot price". */
+  price_name?: string;
   today_import?: string;
   today_export?: string;
   /** Cost of the energy bought today, in its own currency unit (e.g. Tibber "accumulated cost"). */

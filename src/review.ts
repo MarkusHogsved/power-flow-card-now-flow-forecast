@@ -177,6 +177,8 @@ export interface ReviewInput {
   /** Grid power in W, positive = import. */
   grid?: Series;
   price?: Series;
+  /** What a sold kWh earns; `price` when missing. */
+  sellPrice?: Series;
   /** Solar power in W. */
   solar?: Series;
   batteries: ReviewBattery[];
@@ -220,6 +222,8 @@ export interface Review {
   avgBuyPrice: number | null;
   /** Time-weighted average price over the period. */
   avgPrice: number | null;
+  /** Time-weighted average selling price over the period. */
+  avgSellPrice: number | null;
   solarKwh: number | null;
   lowestSoc: { name: string; v: number; t: number } | null;
   peakImportW: number | null;
@@ -277,12 +281,16 @@ export const computeReview = (input: ReviewInput): Review => {
   const exp = grid ? mapSeries(grid, (v) => (Number.isFinite(v) ? Math.max(-v, 0) : v)) : undefined;
   const costOf = (power: Series | undefined, a: number, b: number): number | null =>
     power && price ? integrate(combine([power, price], ([w, p]) => (w * p) / 1000), a, b) : null;
+  const sell = input.sellPrice ?? price;
+  const revenueOf = (power: Series | undefined, a: number, b: number): number | null =>
+    power && sell ? integrate(combine([power, sell], ([w, p]) => (w * p) / 1000), a, b) : null;
 
   const boughtKwh = imp ? integrate(imp, start, end) / 1000 : null;
   const soldKwh = exp ? integrate(exp, start, end) / 1000 : null;
   const cost = costOf(imp, start, end);
-  const revenue = costOf(exp, start, end);
+  const revenue = revenueOf(exp, start, end);
   const avgPrice = price ? average(price, start, end) : NaN;
+  const avgSellPrice = sell ? average(sell, start, end) : NaN;
 
   const primary = input.batteries.find((b) => b.primary && b.soc) ?? input.batteries.find((b) => b.soc);
   const low = primary?.soc ? extreme(primary.soc, start, end, "min") : null;
@@ -393,15 +401,15 @@ export const computeReview = (input: ReviewInput): Review => {
     }
   }
 
-  if (exp && price) {
+  if (exp && sell) {
     for (const run of findRuns(exp, EXPORT_RUN_W, start, end, BATTERY_MIN_MS, MERGE_GAP_MS)) {
       const kwh = integrate(exp, run.start, run.end) / 1000;
       if (kwh < EXPORT_EVENT_KWH) continue;
-      const avg = kwh > 0 ? (costOf(exp, run.start, run.end) ?? 0) / kwh : NaN;
-      // Selling: good when well above the period's average price.
-      const verdict: Verdict = !Number.isFinite(avg) || !Number.isFinite(avgPrice)
+      const avg = kwh > 0 ? (revenueOf(exp, run.start, run.end) ?? 0) / kwh : NaN;
+      // Selling: good when well above the period's average selling price.
+      const verdict: Verdict = !Number.isFinite(avg) || !Number.isFinite(avgSellPrice)
         ? "neutral"
-        : avg >= avgPrice * 1.1 ? "good" : avg <= avgPrice * 0.8 ? "bad" : "ok";
+        : avg >= avgSellPrice * 1.1 ? "good" : avg <= avgSellPrice * 0.8 ? "bad" : "ok";
       events.push({
         kind: "export",
         name: "",
@@ -435,6 +443,7 @@ export const computeReview = (input: ReviewInput): Review => {
     sold: soldKwh !== null ? { kwh: soldKwh, revenue } : null,
     avgBuyPrice: boughtKwh && cost !== null && boughtKwh > 0.05 ? cost / boughtKwh : null,
     avgPrice: Number.isFinite(avgPrice) ? avgPrice : null,
+    avgSellPrice: Number.isFinite(avgSellPrice) ? avgSellPrice : null,
     solarKwh,
     lowestSoc: low && primary ? { name: primary.name, ...low } : null,
     peakImportW: imp ? extreme(imp, start, end, "max")?.v ?? null : null,

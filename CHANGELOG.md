@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+- New `grid.sell_price`: what a sold kWh earns, when it differs from
+  `grid.price` (fees and VAT on bought energy, none on sold). Review values
+  sold energy and export events with it, and judges a sale against the
+  period's average selling price.
+- New `grid.price_name`: the label above the price in the header (default
+  *Spot price*) – e.g. *Price* when `grid.price` includes fees.
+- The vehicle cost line reads *at current price* instead of *at spot price*.
+
 ## 0.3.9
 
 - Review: a vehicle's battery level from → to allows for the car reporting

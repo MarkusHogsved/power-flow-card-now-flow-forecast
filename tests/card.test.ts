@@ -76,7 +76,7 @@ describe("card", () => {
     expect(text).toMatch(/61\s?% → 80\s?%/);
     // (80 − 61) % of 79 kWh / 0.9 ≈ 16.7 kWh, ≈ 1.6 h at 10.4 kW, 16.7 × 1.227 ≈ 20 SEK.
     expect(text).toMatch(/17 kWh to go → (tomorrow )?\d/);
-    expect(text).toContain("~20 SEK at spot price");
+    expect(text).toContain("~20 SEK at current price");
   });
 
   test("a vehicle with cost_price uses that price instead of the spot price", async () => {
@@ -93,7 +93,7 @@ describe("card", () => {
     const text = root(card).querySelector(".load-tile")?.textContent?.replace(/\s+/g, " ");
     // 16.7 kWh × 0.074 ≈ 1 SEK.
     expect(text).toContain("~1 SEK estimated");
-    expect(text).not.toContain("spot price");
+    expect(text).not.toContain("current price");
   });
 
   test("a vehicle with session_cost shows the whole session: so far plus what is left", async () => {
@@ -277,6 +277,12 @@ describe("card", () => {
     event.click();
     await card.updateComplete;
     expect(event.querySelector("svg.chart")).not.toBeNull();
+  });
+
+  test("the header price can be renamed", async () => {
+    const card = await mount({ ...houseConfig, grid: { ...houseConfig.grid!, price_name: "Price" } });
+    expect(root(card).querySelector(".price")?.textContent).toContain("Price");
+    expect(root(card).querySelector(".price")?.textContent).not.toContain("Spot");
   });
 
   test("Review shows the error when history cannot be loaded", async () => {
