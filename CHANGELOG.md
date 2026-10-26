@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.9
+
+- Review: a vehicle's battery level from → to allows for the car reporting
+  late – the lowest level in the first 30 min of the charge and the highest
+  in the 30 min after it (26/10 showed 70 → 75 % for a 63 → 80 % charge).
+
 ## 0.3.8
 
 - Review: a vehicle's charge (a large load with `soc`) shows the outcome –

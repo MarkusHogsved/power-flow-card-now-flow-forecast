@@ -215,6 +215,24 @@ describe("computeReview", () => {
     expect(ev?.vehicle?.soc).toBe(input.loads[0].soc);
   });
 
+  test("a vehicle's level is read when the car reports it, not at the exact start and end", () => {
+    // 26/10: charged 17:55-19:15; the car reported 63 % at 17:55:22 (70 % before)
+    // and 80 % only at 19:19.
+    const input = night();
+    input.loads[0] = {
+      ...input.loads[0],
+      power: steps([[0, 0], [7, 11000], [8.33, 0]]),
+      soc: [
+        { t: at(0), v: 70 },
+        { t: at(7) + 22_000, v: 63 },
+        { t: at(8), v: 75 },
+        { t: at(8, 24), v: 80 },
+      ],
+    };
+    const ev = computeReview(input).events.find((e) => e.name === "EV");
+    expect(ev).toMatchObject({ socFrom: 63, socTo: 80 });
+  });
+
   test("session cost: difference within a session, the whole value after a restart", () => {
     const s = steps([[0, 2], [1, 5], [2, 0.5], [3, 3]]);
     expect(sessionCostOf(s, at(0, 30), at(1, 30), at(24))).toBe(3);
