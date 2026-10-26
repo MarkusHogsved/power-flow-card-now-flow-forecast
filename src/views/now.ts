@@ -67,21 +67,23 @@ const vehicleLines = (ctx: ViewContext, l: LoadState) => {
         : t("load.soc_to_limit", { soc: formatPercent(hass, l.soc), limit: formatPercent(hass, l.socLimit) });
   let left = "";
   let cost = "";
-  if (!atLimit && l.toLimitKwh) {
-    const energy = formatEnergy(hass, l.toLimitKwh);
+  const price = l.costPrice ?? m.price;
+  const currency = m.priceUnit.split("/")[0].trim();
+  const money = (v: number) => `${formatNumber(hass, v, 0)}${currency ? ` ${currency}` : ""}`;
+  const leftKwh = !atLimit && l.toLimitKwh ? l.toLimitKwh : 0;
+  if (l.sessionCost != null && (price !== null || !leftKwh)) {
+    cost = t("load.cost_session", { cost: money(l.sessionCost + leftKwh * (price ?? 0)) });
+  } else if (leftKwh && price !== null) {
+    cost = t(l.costPrice != null ? "load.cost_estimated" : "load.cost", { cost: money(leftKwh * price) });
+  }
+  if (leftKwh) {
+    const energy = formatEnergy(hass, leftKwh);
     if (l.powerW > 0) {
-      const finish = new Date(ctx.now.getTime() + (l.toLimitKwh / (l.powerW / 1000)) * 3_600_000);
+      const finish = new Date(ctx.now.getTime() + (leftKwh / (l.powerW / 1000)) * 3_600_000);
       const u = formatUntil(hass, finish, ctx.now);
       left = t(u.tomorrow ? "load.left_done_tomorrow" : "load.left_done", { energy, time: u.time });
     } else {
       left = t("load.left", { energy });
-    }
-    const price = l.costPrice ?? m.price;
-    if (price !== null) {
-      const currency = m.priceUnit.split("/")[0].trim();
-      cost = t(l.costPrice != null ? "load.cost_estimated" : "load.cost", {
-        cost: `${formatNumber(hass, l.toLimitKwh * price, 0)}${currency ? ` ${currency}` : ""}`,
-      });
     }
   }
   return html`

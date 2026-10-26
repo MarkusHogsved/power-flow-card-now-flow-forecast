@@ -75,7 +75,7 @@ describe("card", () => {
     const text = root(card).querySelector(".load-tile")?.textContent?.replace(/\s+/g, " ");
     expect(text).toMatch(/61\s?% → 80\s?%/);
     // (80 − 61) % of 79 kWh / 0.9 ≈ 16.7 kWh, ≈ 1.6 h at 10.4 kW, 16.7 × 1.227 ≈ 20 SEK.
-    expect(text).toMatch(/17 kWh to go · done (tomorrow )?\d/);
+    expect(text).toMatch(/17 kWh to go → (tomorrow )?\d/);
     expect(text).toContain("~20 SEK at spot price");
   });
 
@@ -94,6 +94,31 @@ describe("card", () => {
     // 16.7 kWh × 0.074 ≈ 1 SEK.
     expect(text).toContain("~1 SEK estimated");
     expect(text).not.toContain("spot price");
+  });
+
+  test("a vehicle with session_cost shows the whole session: so far plus what is left", async () => {
+    const ev = {
+      ...houseConfig.large_loads![0],
+      soc: "sensor.ev_soc",
+      soc_limit: 80,
+      capacity_kwh: 79,
+      cost_price: "sensor.ev_price",
+      session_cost: "sensor.ev_session_cost",
+    };
+    const states = {
+      ...eveningStates,
+      "sensor.ev": "10400",
+      "sensor.ev_soc": ["61", { unit_of_measurement: "%" }],
+      "sensor.ev_price": ["0.5", { unit_of_measurement: "SEK/kWh" }],
+      "sensor.ev_session_cost": ["12", { unit_of_measurement: "SEK" }],
+    } as typeof eveningStates;
+    let text = root(await mount({ ...houseConfig, large_loads: [ev] }, states)).querySelector(".load-tile")?.textContent?.replace(/\s+/g, " ");
+    // 12 SEK so far + 16.7 kWh × 0.5 ≈ 20 SEK.
+    expect(text).toContain("~20 SEK this charge");
+    // At the limit only what the session cost.
+    states["sensor.ev_soc"] = ["80", { unit_of_measurement: "%" }];
+    text = root(await mount({ ...houseConfig, large_loads: [ev] }, states)).querySelector(".load-tile")?.textContent?.replace(/\s+/g, " ");
+    expect(text).toContain("~12 SEK this charge");
   });
 
   test("a vehicle at its limit says so and shows no cost", async () => {

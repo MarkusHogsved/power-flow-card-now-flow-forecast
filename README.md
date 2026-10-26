@@ -128,6 +128,7 @@ loadcast:
 | `large_loads[].soc_limit` | Charge limit: an entity (%), e.g. the car's charging limit, or a fixed number. The tile shows *61 % → 80 %*, or *at limit*. |
 | `large_loads[].capacity_kwh` | Battery size (kWh). Adds energy left to the limit, finish time at the current power and the cost at the current spot price. |
 | `large_loads[].charge_efficiency` | Share of the energy that ends up in the battery, default 0.9. |
+| `large_loads[].session_cost` | What the current charging session has cost so far (an entity in the price's currency). The cost line then shows the whole session – so far plus what is left to the limit – as *~x SEK this charge*. |
 | `large_loads[].cost_price` | An entity with the price per kWh for the cost line, instead of the spot price – e.g. a sensor that weighs in what energy from the house battery is worth. Shown as *~x SEK estimated*. |
 | `loads[]` | `entity`, `name`. Always listed under *Other*, together with *Rest of home* (home minus all configured loads). |
 | `phases` | Phase current sensors (A), in order L1, L2, L3. |

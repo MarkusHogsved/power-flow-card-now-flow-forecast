@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.7
+
+- Vehicle tile: the finish time reads *17 kWh to go → 19:28*.
+- New `large_loads[].session_cost`: what the current charging session has
+  cost so far. The tile then shows the whole session, *~x SEK this charge* –
+  the cost so far plus what is left to the limit.
+
 ## 0.3.6
 
 - New `large_loads[].cost_price`: an entity with the price per kWh to use for
