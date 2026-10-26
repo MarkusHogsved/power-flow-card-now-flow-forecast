@@ -253,6 +253,32 @@ describe("card", () => {
     expect(localStorage.getItem("power-flow-card-now-flow-forecast:review-hours:default")).toBe("12");
   });
 
+  test("Review shows a vehicle's charge outcome and unfolds its chart", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc", session_cost: "sensor.ev_session_cost" };
+    const card = await mount({ ...houseConfig, large_loads: [ev] });
+    const hass = makeHass(eveningStates);
+    hass.callWS = (async () => ({
+      "sensor.ev": [{ s: "0", lu: now - 20 * 3600 }, { s: "10000", lu: now - 3 * 3600 }, { s: "0", lu: now - 3600 }],
+      "sensor.ev_soc": [{ s: "48", lu: now - 20 * 3600 }, { s: "73", lu: now - 3600 }],
+      "sensor.ev_session_cost": [{ s: "0", lu: now - 3 * 3600 }, { s: "8.4", lu: now - 3600 }],
+    })) as HomeAssistant["callWS"];
+    card.hass = hass;
+    tab(card, "Review").click();
+    await card.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await card.updateComplete;
+    const event = [...root(card).querySelectorAll<HTMLElement>(".event")].find((e) => e.textContent?.includes("EV"))!;
+    const text = event.textContent?.replace(/\s+/g, " ");
+    expect(text).toMatch(/48 → 73\s?%/);
+    expect(text).toContain("~20 kWh");
+    expect(text).toContain("8.40 SEK");
+    expect(event.querySelector("svg.chart")).toBeNull();
+    event.click();
+    await card.updateComplete;
+    expect(event.querySelector("svg.chart")).not.toBeNull();
+  });
+
   test("Review shows the error when history cannot be loaded", async () => {
     const card = await mount({ ...houseConfig, default_view: "review" });
     const hass = makeHass(eveningStates);

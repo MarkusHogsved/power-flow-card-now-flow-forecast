@@ -165,6 +165,10 @@ export interface ReviewLoad {
   power: Series;
   /** At or above this power the load counts as running (W). */
   threshold: number;
+  /** A vehicle's battery level (%). */
+  soc?: Series;
+  /** A vehicle's charging session cost so far (restarts with each session). */
+  sessionCost?: Series;
 }
 
 export interface ReviewInput {
@@ -198,6 +202,10 @@ export interface ReviewEvent {
   verdict: Verdict;
   socFrom?: number;
   socTo?: number;
+  /** What a vehicle's charge cost, from its session cost entity. */
+  cost?: number;
+  /** A vehicle's power (W) and battery level around the event, for its chart. */
+  vehicle?: { power: Series; soc?: Series };
   /** Several short runs summarised in one event. */
   runs?: number;
   peakW?: number;
@@ -240,9 +248,24 @@ const GRID_SHARE_MIN = 0.3;
 const SOLAR_ON_W = 50;
 const EXPORT_RUN_W = 500;
 
+/** The session cost counter updates about once a minute, so read it a little after the run. */
+const SESSION_COST_LAG_MS = 5 * MINUTE;
+
 const BATTERY_COLOR = "#4FC1B0";
 const SOLAR_COLOR = "#F5B942";
 const EXPORT_COLOR = "#7FC97F";
+
+/**
+ * What a charge cost from a session cost counter: its value shortly after the
+ * run minus its value at the start, or the whole value when the counter
+ * restarted (a new session) during the run.
+ */
+export const sessionCostOf = (s: Series, from: number, to: number, end: number): number | undefined => {
+  const after = valueAt(s, Math.min(to + SESSION_COST_LAG_MS, end));
+  if (!Number.isFinite(after)) return undefined;
+  const before = valueAt(s, from);
+  return Number.isFinite(before) && before <= after ? after - before : after;
+};
 
 export const computeReview = (input: ReviewInput): Review => {
   const { start, end, grid, price, solar } = input;
@@ -331,7 +354,14 @@ export const computeReview = (input: ReviewInput): Review => {
 
   for (const load of input.loads) {
     const runs = findRuns(load.power, load.threshold, start, end, LOAD_MIN_MS, MERGE_GAP_MS);
-    addRuns({ kind: "load", name: load.name, color: load.color, icon: load.icon }, load.power, runs);
+    const first = events.length;
+    addRuns({ kind: "load", name: load.name, color: load.color, icon: load.icon }, load.power, runs, load.soc);
+    if (!load.soc) continue;
+    for (const e of events.slice(first)) {
+      if (e.runs) continue;
+      e.vehicle = { power: load.power, soc: load.soc };
+      if (load.sessionCost) e.cost = sessionCostOf(load.sessionCost, e.start, e.end, end);
+    }
   }
 
   let solarKwh: number | null = null;

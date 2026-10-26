@@ -10,7 +10,9 @@ import {
   hourlyPrices,
   integrate,
   priceVerdict,
+  sessionCostOf,
   valueAt,
+  type ReviewInput,
   type Series,
 } from "../src/review";
 import { houseConfig, makeHass } from "./helpers";
@@ -89,7 +91,7 @@ describe("series helpers", () => {
  * cheapest hours (01:00-05:00, 0.34), the EV tops up in the afternoon at
  * 1.16, solar 09-16, nothing sold.
  */
-const night = () => {
+const night = (): ReviewInput => {
   const price: [number, number][] = [];
   for (let h = 0; h < 24; h++) price.push([h, h >= 18 && h < 22 ? 0.34 : h >= 7 && h < 12 ? 1.16 : 0.9]);
   const grid = steps([[0, 400], [7, 11400], [7.25, 400], [18, 11400], [22, 300]]);
@@ -197,6 +199,27 @@ describe("computeReview", () => {
     const input = night();
     input.phases = [[{ t: at(0), v: 10 }, { t: at(3), v: 27 }, { t: at(3, 0) + 20_000, v: 10 }]];
     expect(computeReview(input).maxPhaseA).toBeLessThan(13);
+  });
+
+  test("a vehicle's charge shows its battery level and what the session cost", () => {
+    const input = night();
+    input.loads[0] = {
+      ...input.loads[0],
+      soc: steps([[0, 52], [7.25, 61]]),
+      // the counter from an earlier session, restarted at 07:00, ~1 min behind
+      sessionCost: steps([[0, 4.5], [7.02, 0.4], [7.1, 2.1], [7.27, 3.19]]),
+    };
+    const ev = computeReview(input).events.find((e) => e.name === "EV");
+    expect(ev).toMatchObject({ socFrom: 52, socTo: 61 });
+    expect(ev?.cost).toBeCloseTo(3.19);
+    expect(ev?.vehicle?.soc).toBe(input.loads[0].soc);
+  });
+
+  test("session cost: difference within a session, the whole value after a restart", () => {
+    const s = steps([[0, 2], [1, 5], [2, 0.5], [3, 3]]);
+    expect(sessionCostOf(s, at(0, 30), at(1, 30), at(24))).toBe(3);
+    expect(sessionCostOf(s, at(1, 30), at(2, 50), at(24))).toBe(0.5);
+    expect(sessionCostOf([], at(0), at(1), at(24))).toBeUndefined();
   });
 
   test("no data at all gives an empty review, not a crash", () => {

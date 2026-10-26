@@ -13,4 +13,8 @@ export interface ViewContext {
   vehicle?: VehicleChartState;
   /** Unfolds or folds the history under a vehicle tile (by its power entity). */
   toggleVehicle: (entityId: string) => void;
+  /** Start of the Review event whose chart is unfolded, if any. */
+  reviewOpen?: number;
+  /** Unfolds or folds a Review event's chart (by its start). */
+  toggleReviewEvent: (start: number) => void;
 }

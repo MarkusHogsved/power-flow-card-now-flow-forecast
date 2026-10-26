@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.8
+
+- Review: a vehicle's charge (a large load with `soc`) shows the outcome –
+  battery level from → to, energy and, with `session_cost`, what the charge
+  cost and the price per kWh. Tapping it unfolds the same power and battery
+  level chart as on the Now tile, for that charge.
+
 ## 0.3.7
 
 - Vehicle tile: the finish time reads *17 kWh to go → 19:28*.

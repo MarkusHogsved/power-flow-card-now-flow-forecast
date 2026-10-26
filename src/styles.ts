@@ -232,6 +232,9 @@ export const styles = css`
   .load-tile ha-icon {
     --mdc-icon-size: 22px;
   }
+  .event.expandable {
+    cursor: pointer;
+  }
   .vehicle-panel {
     margin-top: 8px;
     background: var(--nff-chip);
