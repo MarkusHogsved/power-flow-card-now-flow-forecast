@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.5
+
+- A large load can be a vehicle: with `soc` the tile shows the battery level
+  and, with `soc_limit`, *61 % → 80 %* (or *at limit*). Adding `capacity_kwh`
+  also shows the energy left, when it is done at the current power, and the
+  cost at the current spot price (`charge_efficiency`, default 0.9).
+
 ## 0.3.4
 
 - The import reason's time follows the profile's time format, so a 24 h

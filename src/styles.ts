@@ -232,6 +232,10 @@ export const styles = css`
   .load-tile ha-icon {
     --mdc-icon-size: 22px;
   }
+  .load-line {
+    font-size: 12px;
+    line-height: 1.3;
+  }
   .others {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

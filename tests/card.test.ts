@@ -61,6 +61,35 @@ describe("card", () => {
     expect(tiles[0].textContent).toContain("EV");
   });
 
+  test("a vehicle tile shows level → limit, energy left, finish time and cost", async () => {
+    const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc", soc_limit: "number.ev_limit", capacity_kwh: 79 };
+    const card = await mount(
+      { ...houseConfig, large_loads: [ev] },
+      {
+        ...eveningStates,
+        "sensor.ev": "10400",
+        "sensor.ev_soc": ["61", { unit_of_measurement: "%" }],
+        "number.ev_limit": ["80", { unit_of_measurement: "%" }],
+      },
+    );
+    const text = root(card).querySelector(".load-tile")?.textContent?.replace(/\s+/g, " ");
+    expect(text).toMatch(/61\s?% → 80\s?%/);
+    // (80 − 61) % of 79 kWh / 0.9 ≈ 16.7 kWh, ≈ 1.6 h at 10.4 kW, 16.7 × 1.227 ≈ 20 SEK.
+    expect(text).toMatch(/17 kWh to go · done (tomorrow )?\d/);
+    expect(text).toContain("~20 SEK at spot price");
+  });
+
+  test("a vehicle at its limit says so and shows no cost", async () => {
+    const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc", soc_limit: 80, capacity_kwh: 79 };
+    const card = await mount(
+      { ...houseConfig, large_loads: [ev] },
+      { ...eveningStates, "sensor.ev": "800", "sensor.ev_soc": ["80", { unit_of_measurement: "%" }] },
+    );
+    const text = root(card).querySelector(".load-tile")?.textContent?.replace(/\s+/g, " ");
+    expect(text).toMatch(/80\s?% · at limit/);
+    expect(text).not.toContain("spot price");
+  });
+
   test("Now shows today's solar forecast and today's purchase and cost at the nodes", async () => {
     const card = await mount(
       {

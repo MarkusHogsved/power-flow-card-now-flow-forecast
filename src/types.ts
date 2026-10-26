@@ -84,6 +84,14 @@ export interface LoadConfig {
   /** Large loads only: shown in "Running now" at or above this power (W). Default 30. */
   threshold?: number;
   color?: string;
+  /** Large loads that are a vehicle: battery level (%), shown on the tile. */
+  soc?: string;
+  /** Charge limit: an entity (%), e.g. the car's charging limit, or a fixed number. */
+  soc_limit?: string | number;
+  /** Battery size (kWh): adds energy left, finish time and cost to the tile. */
+  capacity_kwh?: number;
+  /** Share of the energy that ends up in the battery, default 0.9. */
+  charge_efficiency?: number;
 }
 
 export interface LoadCastConfig {

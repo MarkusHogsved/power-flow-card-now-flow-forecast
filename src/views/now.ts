@@ -1,5 +1,5 @@
 import { html, nothing, svg } from "lit";
-import { formatEnergy, formatNumber, formatPercent, formatPower, readNumber } from "../hass";
+import { formatEnergy, formatNumber, formatPercent, formatPower, formatUntil, readNumber } from "../hass";
 import { expectedImportKwh, readLoadCast, readSolarP10ByHour } from "../forecast";
 import { COLORS, type BatteryState, type LoadState } from "../model";
 import { t } from "../strings";
@@ -54,11 +54,46 @@ const cell = (ctx: ViewContext, b: BatteryState) => html`
   </div>
 `;
 
+/** Vehicle lines on a load tile: level → limit, energy left and finish time, cost at the spot price. */
+const vehicleLines = (ctx: ViewContext, l: LoadState) => {
+  const { hass, model: m } = ctx;
+  if (l.soc === undefined || l.soc === null) return nothing;
+  const atLimit = l.socLimit != null && l.soc >= l.socLimit - 0.5;
+  const level =
+    l.socLimit == null
+      ? formatPercent(hass, l.soc)
+      : atLimit
+        ? t("load.at_limit", { soc: formatPercent(hass, l.soc) })
+        : t("load.soc_to_limit", { soc: formatPercent(hass, l.soc), limit: formatPercent(hass, l.socLimit) });
+  let left = "";
+  let cost = "";
+  if (!atLimit && l.toLimitKwh) {
+    const energy = formatEnergy(hass, l.toLimitKwh);
+    if (l.powerW > 0) {
+      const finish = new Date(ctx.now.getTime() + (l.toLimitKwh / (l.powerW / 1000)) * 3_600_000);
+      const u = formatUntil(hass, finish, ctx.now);
+      left = t(u.tomorrow ? "load.left_done_tomorrow" : "load.left_done", { energy, time: u.time });
+    } else {
+      left = t("load.left", { energy });
+    }
+    if (m.price !== null) {
+      const currency = m.priceUnit.split("/")[0].trim();
+      cost = t("load.cost", { cost: `${formatNumber(hass, l.toLimitKwh * m.price, 0)}${currency ? ` ${currency}` : ""}` });
+    }
+  }
+  return html`
+    <span class="load-line">${level}</span>
+    ${left ? html`<span class="load-line muted">${left}</span>` : nothing}
+    ${cost ? html`<span class="load-line muted">${cost}</span>` : nothing}
+  `;
+};
+
 const loadTile = (ctx: ViewContext, l: LoadState) => html`
   <div class="load-tile" style="border-top-color: ${l.color}" @click=${() => ctx.moreInfo(l.entity)}>
     <ha-icon .icon=${l.icon} style="color: ${l.color}"></ha-icon>
     <span class="muted" style="font-size: 12px">${l.name}</span>
     <b style="font-size: 14px">${formatPower(ctx.hass, l.powerW)}</b>
+    ${vehicleLines(ctx, l)}
   </div>
 `;
 
