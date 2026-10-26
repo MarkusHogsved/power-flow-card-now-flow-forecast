@@ -301,7 +301,7 @@ export const renderReview = (ctx: ViewContext, state: ReviewState, setHours: (h:
       <div class="events">
         <span class="section-title">${t("review.what_happened")}</span>
         ${r.events.length
-          ? r.events.map((e) => eventCard(ctx, e, unit, r.avgPrice))
+          ? r.events.map((e) => eventCard(ctx, e, unit, e.kind === "export" ? r.avgSellPrice : r.avgPrice))
           : html`<span class="muted">${t("review.nothing_happened")}</span>`}
       </div>
 

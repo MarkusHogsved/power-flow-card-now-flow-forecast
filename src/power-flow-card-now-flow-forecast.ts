@@ -14,7 +14,7 @@ import { renderReview, type ReviewHours, type ReviewState } from "./views/review
 import { VEHICLE_HOURS, type VehicleChartState } from "./views/vehicle";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.3.9";
+export const VERSION = "0.4.0";
 const VIEWS: ViewName[] = ["now", "flow", "forecast", "review"];
 /** Review history is fetched again when older than this. */
 const REVIEW_MAX_AGE_MS = 5 * 60_000;
@@ -199,7 +199,7 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
         </div>
         ${model.price !== null
           ? html`<div class="price" @click=${() => this._moreInfo(this._config?.grid?.price)}>
-              ${t("price")}
+              ${this._config?.grid?.price_name ?? t("price")}
               <b>${formatNumber(hass, model.price, 2)}</b>
               <span>${model.priceUnit}</span>
             </div>`

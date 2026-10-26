@@ -233,6 +233,21 @@ describe("computeReview", () => {
     expect(ev).toMatchObject({ socFrom: 63, socTo: 80 });
   });
 
+  test("sold energy is valued at the selling price when one is given", () => {
+    const input = night();
+    // 2 kWh sold 12:00-13:00; buying costs 1.70, selling earns 0.80
+    input.grid = steps([[0, 400], [12, -2000], [13, 400]]);
+    input.price = steps([[0, 1.7]]);
+    input.sellPrice = steps([[0, 0.8]]);
+    const r = computeReview(input);
+    expect(r.sold?.revenue).toBeCloseTo(1.6);
+    expect(r.avgSellPrice).toBeCloseTo(0.8);
+    const sold = r.events.find((e) => e.kind === "export");
+    expect(sold).toMatchObject({ avgPrice: expect.closeTo(0.8, 5), verdict: "ok" });
+    // without a selling price the buying price is used, as before
+    expect(computeReview({ ...input, sellPrice: undefined }).sold?.revenue).toBeCloseTo(3.4);
+  });
+
   test("session cost: difference within a session, the whole value after a restart", () => {
     const s = steps([[0, 2], [1, 5], [2, 0.5], [3, 3]]);
     expect(sessionCostOf(s, at(0, 30), at(1, 30), at(24))).toBe(3);

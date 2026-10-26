@@ -23,6 +23,7 @@ export const reviewEntities = (config: CardConfig): string[] => {
   const ids = [
     config.grid?.entity,
     config.grid?.price,
+    config.grid?.sell_price,
     config.solar?.entity,
     ...(config.batteries ?? []).flatMap((b) => [
       b.state_of_charge,
@@ -122,6 +123,7 @@ export const buildReviewInput = (
     end,
     grid: grid && config.grid?.invert_state ? mapSeries(grid, (v) => -v) : grid,
     price: present(history, config.grid?.price),
+    sellPrice: present(history, config.grid?.sell_price),
     solar: config.solar?.entity ? powerSeries(hass, history, [config.solar.entity]) : undefined,
     batteries,
     loads,
