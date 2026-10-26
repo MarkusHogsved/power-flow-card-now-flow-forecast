@@ -124,11 +124,11 @@ loadcast:
 | `batteries[]` | `state_of_charge` (required), `entity` (power, positive = charging; one entity or a list that is summed; `invert_state` flips it) or `charge_entity` + `discharge_entity` (both positive, each one entity or a list), `name`, `icon`, `capacity_kwh` and `reserve_soc` (needed for *Will the battery last?*). |
 | `batteries[].inside_home` | `true` for a battery that charges from the home's own consumption, e.g. a UPS on a socket. Its level and power are shown, but it is left out of the flows and the Sankey, so its charging is not counted twice. |
 | `large_loads[]` | `entity`, `name`, `icon`, `color`, `threshold` (W, default 30). Shown under *Running now* only at or above the threshold. |
-| `large_loads[].soc` | A vehicle's battery level (%), shown on its tile. Tapping the tile unfolds its power and battery level over the last 12 h in one chart. |
+| `large_loads[].soc` | A vehicle's battery level (%), shown on its tile. Tapping the tile unfolds its power and battery level over the last 12 h in one chart. In Review, the vehicle's charges show battery level from → to, and tapping one unfolds the same chart for that charge. |
 | `large_loads[].soc_limit` | Charge limit: an entity (%), e.g. the car's charging limit, or a fixed number. The tile shows *61 % → 80 %*, or *at limit*. |
 | `large_loads[].capacity_kwh` | Battery size (kWh). Adds energy left to the limit, finish time at the current power and the cost at the current spot price. |
 | `large_loads[].charge_efficiency` | Share of the energy that ends up in the battery, default 0.9. |
-| `large_loads[].session_cost` | What the current charging session has cost so far (an entity in the price's currency). The cost line then shows the whole session – so far plus what is left to the limit – as *~x SEK this charge*. |
+| `large_loads[].session_cost` | What the current charging session has cost so far (an entity in the price's currency). The cost line then shows the whole session – so far plus what is left to the limit – as *~x SEK this charge*. Review shows what each charge cost. |
 | `large_loads[].cost_price` | An entity with the price per kWh for the cost line, instead of the spot price – e.g. a sensor that weighs in what energy from the house battery is worth. Shown as *~x SEK estimated*. |
 | `loads[]` | `entity`, `name`. Always listed under *Other*, together with *Rest of home* (home minus all configured loads). |
 | `phases` | Phase current sensors (A), in order L1, L2, L3. |

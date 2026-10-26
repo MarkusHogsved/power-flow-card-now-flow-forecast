@@ -14,7 +14,7 @@ import { renderReview, type ReviewHours, type ReviewState } from "./views/review
 import { VEHICLE_HOURS, type VehicleChartState } from "./views/vehicle";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.3.7";
+export const VERSION = "0.3.8";
 const VIEWS: ViewName[] = ["now", "flow", "forecast", "review"];
 /** Review history is fetched again when older than this. */
 const REVIEW_MAX_AGE_MS = 5 * 60_000;
@@ -51,6 +51,7 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
     _review: { state: true },
     _reasonOpen: { state: true },
     _vehicle: { state: true },
+    _reviewOpen: { state: true },
   };
 
   hass?: HomeAssistant;
@@ -65,6 +66,8 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
   private _vehicle?: VehicleChartState;
   private _vehicleFetchedAt = 0;
   private _vehicleRequest = 0;
+  /** Start of the Review event whose chart is unfolded. */
+  private _reviewOpen?: number;
 
   setConfig(config: CardConfig): void {
     if (!config?.home?.entity) throw new Error("home.entity is required");
@@ -249,6 +252,8 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
       moreInfo: this._moreInfo,
       vehicle: this._vehicle,
       toggleVehicle: this._toggleVehicle,
+      reviewOpen: this._reviewOpen,
+      toggleReviewEvent: (start: number) => (this._reviewOpen = this._reviewOpen === start ? undefined : start),
     };
     return html`
       <ha-card>

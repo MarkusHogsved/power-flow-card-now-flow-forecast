@@ -31,12 +31,22 @@ const steps = (s: Series, start: number, end: number): Series => {
   return [...(before ? [{ t: start, v: before.v }] : []), ...inside];
 };
 
-const chart = (st: VehicleChartState, l: LoadState, powerFactor: number) => {
-  const start = st.start as number;
-  const end = st.end as number;
+export interface VehicleChartData {
+  start: number;
+  end: number;
+  /** Power in W. */
+  power: Series;
+  soc?: Series;
+  color: string;
+  socLimit?: number | null;
+}
+
+/** Charging power (area) and battery level (line, 0-100 %) between start and end. */
+export const vehicleChart = (d: VehicleChartData) => {
+  const { start, end } = d;
   const x = (ms: number) => ((ms - start) / (end - start)) * W;
-  const power = steps(st.power ?? [], start, end).map((p) => ({ t: p.t, v: p.v * powerFactor }));
-  const soc = steps(st.soc ?? [], start, end);
+  const power = steps(d.power, start, end);
+  const soc = steps(d.soc ?? [], start, end);
   const maxW = Math.max(...power.map((p) => p.v).filter(Number.isFinite), 1000) * 1.1;
   const yPower = (v: number) => PLOT_H - (v / maxW) * (PLOT_H - 4);
   const ySoc = (v: number) => PLOT_H - (v / 100) * PLOT_H;
@@ -61,18 +71,20 @@ const chart = (st: VehicleChartState, l: LoadState, powerFactor: number) => {
     pen = true;
   });
 
+  const hours = (end - start) / 3_600_000;
+  const step = hours > 8 ? 2 : 1;
   const ticks: number[] = [];
   const first = new Date(start);
   first.setMinutes(0, 0, 0);
   for (let h = first.getTime() + 3_600_000; h < end; h += 3_600_000) {
-    if (new Date(h).getHours() % 2 === 0) ticks.push(h);
+    if (new Date(h).getHours() % step === 0) ticks.push(h);
   }
 
   return svg`
     <svg class="chart" viewBox="0 0 ${W} ${SVG_H}" role="img" aria-label=${t("vehicle.chart")}>
-      <path d=${area} fill=${l.color} fill-opacity="0.25" stroke=${l.color} stroke-width="1.2" stroke-linejoin="round"></path>
-      ${l.socLimit != null
-        ? svg`<line x1="0" x2=${W} y1=${ySoc(l.socLimit).toFixed(1)} y2=${ySoc(l.socLimit).toFixed(1)}
+      <path d=${area} fill=${d.color} fill-opacity="0.25" stroke=${d.color} stroke-width="1.2" stroke-linejoin="round"></path>
+      ${d.socLimit != null
+        ? svg`<line x1="0" x2=${W} y1=${ySoc(d.socLimit).toFixed(1)} y2=${ySoc(d.socLimit).toFixed(1)}
             stroke=${COLORS.battery} stroke-opacity="0.6" stroke-width="1" stroke-dasharray="3 4"></line>`
         : nothing}
       ${line ? svg`<path d=${line} fill="none" stroke=${COLORS.battery} stroke-width="2" stroke-linejoin="round"></path>` : nothing}
@@ -98,7 +110,14 @@ export const vehiclePanel = (ctx: ViewContext, l: LoadState, st: VehicleChartSta
         </span>
       </div>
       ${ready
-        ? chart(st, l, factor)
+        ? vehicleChart({
+            start: st.start as number,
+            end: st.end as number,
+            power: (st.power ?? []).map((p) => ({ t: p.t, v: p.v * factor })),
+            soc: st.soc,
+            color: l.color,
+            socLimit: l.socLimit,
+          })
         : html`<div class="muted">${st.error ? t("review.error", { message: st.error }) : t("review.loading")}</div>`}
       ${ready && st.error ? html`<div class="muted">${t("review.error", { message: st.error })}</div>` : nothing}
       <div class="vehicle-links">

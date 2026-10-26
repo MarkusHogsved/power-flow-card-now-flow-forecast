@@ -30,7 +30,7 @@ export const reviewEntities = (config: CardConfig): string[] => {
       ...list(b.charge_entity),
       ...list(b.discharge_entity),
     ]),
-    ...(config.large_loads ?? []).map((l) => l.entity),
+    ...(config.large_loads ?? []).flatMap((l) => [l.entity, l.soc, l.session_cost]),
     ...(config.phases ?? []),
   ];
   return [...new Set(ids.filter((id): id is string => !!id))];
@@ -112,6 +112,8 @@ export const buildReviewInput = (
           color: l.color ?? LOAD_PALETTE[i % LOAD_PALETTE.length],
           power,
           threshold: l.threshold ?? DEFAULT_LOAD_THRESHOLD_W,
+          soc: present(history, l.soc),
+          sessionCost: present(history, l.session_cost),
         }]
       : [];
   });

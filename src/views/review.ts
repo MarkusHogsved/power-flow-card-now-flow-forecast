@@ -4,6 +4,7 @@ import { COLORS } from "../model";
 import type { Review, ReviewEvent, Verdict } from "../review";
 import { t } from "../strings";
 import type { ViewContext } from "./context";
+import { vehicleChart } from "./vehicle";
 
 export type ReviewHours = 12 | 24;
 
@@ -125,6 +126,8 @@ const ICONS: Record<ReviewEvent["kind"], string> = {
 const eventCard = (ctx: ViewContext, e: ReviewEvent, unit: string, avgPrice: number | null) => {
   const { hass } = ctx;
   const price = (p: number) => `${formatNumber(hass, p, 2)} ${unit}`;
+  const currency = unit.split("/")[0].trim();
+  const money = (v: number) => `${formatNumber(hass, v, Math.abs(v) < 10 ? 2 : 0)}${currency ? ` ${currency}` : ""}`;
   const energy = `~${formatEnergy(hass, e.kwh)}`;
 
   const pricing = () => {
@@ -155,7 +158,13 @@ const eventCard = (ctx: ViewContext, e: ReviewEvent, unit: string, avgPrice: num
       title = e.runs ? t("review.runs", { name: e.name, runs: String(e.runs) }) : t("review.load.title", { name: e.name });
       text = e.runs
         ? html`${energy}${e.avgPrice !== null ? html` · avg <b>${price(e.avgPrice)}</b>` : nothing}`
-        : pricing();
+        : e.vehicle
+          ? html`${e.socFrom !== undefined && e.socTo !== undefined && Number.isFinite(e.socFrom) && Number.isFinite(e.socTo)
+              ? `${formatNumber(hass, Math.round(e.socFrom), 0)} → ${formatPercent(hass, e.socTo)} · `
+              : nothing}${energy}${e.cost !== undefined
+              ? html` · <b>${money(e.cost)}</b>${e.kwh > 0 ? ` (${price(e.cost / e.kwh)})` : ""}`
+              : html` · ${pricing()}`}`
+          : pricing();
       break;
     case "solar":
       title = t("review.solar.title");
@@ -174,12 +183,28 @@ const eventCard = (ctx: ViewContext, e: ReviewEvent, unit: string, avgPrice: num
       });
   }
   const border = e.verdict === "neutral" ? e.color ?? "var(--nff-track)" : VERDICT_COLORS[e.verdict];
+  const open = !!e.vehicle && ctx.reviewOpen === e.start;
+  const pad = Math.max((e.end - e.start) * 0.15, 15 * 60_000);
   return html`
-    <div class="event ${e.verdict}" style="border-left-color: ${border}">
+    <div
+      class="event ${e.verdict}${e.vehicle ? " expandable" : ""}"
+      style="border-left-color: ${border}"
+      aria-expanded=${e.vehicle ? (open ? "true" : "false") : nothing}
+      @click=${e.vehicle ? () => ctx.toggleReviewEvent(e.start) : nothing}
+    >
       <ha-icon .icon=${e.icon ?? ICONS[e.kind]} style="color: ${e.color ?? "inherit"}"></ha-icon>
       <div class="event-body">
         <div class="row"><b>${title}</b><span class="muted">${hhmm(e.start)} – ${hhmm(e.end)}</span></div>
         <span class="event-text">${text}</span>
+        ${open && e.vehicle
+          ? vehicleChart({
+              start: e.start - pad,
+              end: Math.min(e.end + pad, Date.now()),
+              power: e.vehicle.power,
+              soc: e.vehicle.soc,
+              color: e.color ?? COLORS.battery,
+            })
+          : nothing}
       </div>
     </div>
   `;
