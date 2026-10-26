@@ -1,5 +1,5 @@
 import { friendlyName, readNumber, readPowerSumW, readPowerW } from "./hass";
-import type { CardConfig, HomeAssistant } from "./types";
+import type { CardConfig, HomeAssistant, LoadConfig } from "./types";
 
 /** Below this, a power reading counts as zero (W). */
 export const IDLE_W = 30;
@@ -37,7 +37,24 @@ export interface LoadState {
   color: string;
   powerW: number;
   entity: string;
+  /** Vehicles: battery level and charge limit (%), null when unknown. */
+  soc?: number | null;
+  socLimit?: number | null;
+  /** Energy drawn to reach the limit (kWh, with losses); needs capacity_kwh. */
+  toLimitKwh?: number | null;
 }
+
+/** Battery level, charge limit and energy still to draw for a load that is a vehicle. */
+const vehicle = (hass: HomeAssistant, l: LoadConfig): Partial<LoadState> => {
+  if (!l.soc) return {};
+  const soc = readNumber(hass, l.soc);
+  const socLimit = typeof l.soc_limit === "number" ? l.soc_limit : readNumber(hass, l.soc_limit);
+  const toLimitKwh =
+    soc !== null && socLimit !== null && l.capacity_kwh
+      ? (Math.max(socLimit - soc, 0) / 100) * l.capacity_kwh / (l.charge_efficiency ?? 0.9)
+      : null;
+  return { soc, socLimit, toLimitKwh };
+};
 
 export interface Flows {
   solarToHome: number;
@@ -149,6 +166,7 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
     color: l.color ?? LOAD_PALETTE[i % LOAD_PALETTE.length],
     powerW: Math.max(readPowerW(hass, l.entity) ?? 0, 0),
     entity: l.entity,
+    ...vehicle(hass, l),
   });
   const large = (config.large_loads ?? []).map((l, i) => ({
     state: toLoad(l, i),
