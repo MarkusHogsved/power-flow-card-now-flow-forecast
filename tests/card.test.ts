@@ -249,10 +249,18 @@ describe("card", () => {
     const away = { ...ev, presence: "device_tracker.ev" };
     states["device_tracker.ev"] = "not_home";
     card = await mount({ ...houseConfig, default_view: "forecast", large_loads: [away] }, states);
-    expect(root(card).textContent).not.toContain("car");
+    expect(root(card).textContent).not.toContain("kWh car");
     states["device_tracker.ev"] = "unavailable";
     card = await mount({ ...houseConfig, default_view: "forecast", large_loads: [away] }, states);
     expect(root(card).textContent).toContain("+ 30 kWh car");
+    // a switch next to the tracker: off leaves the vehicle out even at home
+    states["device_tracker.ev"] = "home";
+    states["input_boolean.include_ev"] = "off";
+    card = await mount(
+      { ...houseConfig, default_view: "forecast", large_loads: [{ ...ev, presence: ["device_tracker.ev", "input_boolean.include_ev"] }] },
+      states,
+    );
+    expect(root(card).textContent).not.toContain("kWh car");
   });
 
   test("Forecast without LoadCast data says so instead of breaking", async () => {

@@ -76,8 +76,11 @@ const vehicle = (hass: HomeAssistant, l: LoadConfig): Partial<LoadState> => {
   const start = readDateTime(hass, l.charge_plan?.[0]);
   const end = readDateTime(hass, l.charge_plan?.[1]);
   const plan = start && end && end > start ? { start, end } : null;
-  const where = l.presence ? hass.states[l.presence]?.state : undefined;
-  const home = where === undefined || ["home", "unknown", "unavailable"].includes(where);
+  const presence = l.presence === undefined ? [] : Array.isArray(l.presence) ? l.presence : [l.presence];
+  const home = presence.every((id) => {
+    const s = hass.states[id]?.state;
+    return s === undefined || ["home", "on", "unknown", "unavailable"].includes(s);
+  });
   return { soc, socEntity: l.soc, socLimit, toLimitKwh, costPrice, sessionCost, plan, home };
 };
 
