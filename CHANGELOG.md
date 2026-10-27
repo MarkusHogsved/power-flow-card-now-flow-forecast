@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+- Forecast: a vehicle below its charge limit is part of the picture. The
+  header adds *+ 30 kWh car*, and *Will the battery last?* gets a row with
+  its level → limit and energy. New `large_loads[].charge_plan` (start and end
+  entities, e.g. a smart charging automation's helpers): planned charging is
+  drawn in the chart in the vehicle's colour and counted as bought from the
+  grid; without a plan the energy is counted against the batteries.
+
 ## 0.4.1
 
 - Now: the phases always share one row under the fuse label. On a phone L3

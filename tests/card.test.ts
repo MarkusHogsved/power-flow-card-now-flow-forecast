@@ -206,6 +206,46 @@ describe("card", () => {
     expect(tab(again, "Flow").getAttribute("aria-pressed")).toBe("true");
   });
 
+  test("Forecast shows a vehicle's charging need: planned from the grid, otherwise from the batteries", async () => {
+    const now = new Date();
+    const forecast = Array.from({ length: 24 }, (_, i) => {
+      const d = new Date(now);
+      d.setMinutes(0, 0, 0);
+      d.setHours(d.getHours() + i);
+      return { period_start: d.toISOString(), kwh: 1, kwh_p10: 0.8, kwh_p90: 1.4 };
+    });
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:00`;
+    const ev = {
+      ...houseConfig.large_loads![0],
+      soc: "sensor.ev_soc",
+      soc_limit: 80,
+      capacity_kwh: 79,
+      charge_plan: ["input_datetime.plan_start", "input_datetime.plan_end"] as [string, string],
+    };
+    const states = {
+      ...eveningStates,
+      "sensor.loadcast": ["24", { forecast }],
+      "sensor.ev_soc": ["46", { unit_of_measurement: "%" }],
+      "input_datetime.plan_start": fmt(new Date(now.getTime() + 2 * 3_600_000)),
+      "input_datetime.plan_end": fmt(new Date(now.getTime() + 5 * 3_600_000)),
+    } as typeof eveningStates;
+    let card = await mount({ ...houseConfig, default_view: "forecast", large_loads: [ev] }, states);
+    let text = root(card).textContent?.replace(/\s+/g, " ") ?? "";
+    // (80 - 46) % of 79 kWh / 0.9 ≈ 29.8 kWh
+    expect(text).toContain("+ 30 kWh car");
+    expect(text).toMatch(/EV 46\s?% → 80\s?%/);
+    expect(text).toContain("bought from the grid");
+    expect(root(card).querySelectorAll("svg.chart path")).toHaveLength(3);
+
+    // without a plan it counts against the batteries
+    states["input_datetime.plan_end"] = "unknown";
+    card = await mount({ ...houseConfig, default_view: "forecast", large_loads: [ev] }, states);
+    text = root(card).textContent?.replace(/\s+/g, " ") ?? "";
+    expect(text).toContain("no charging plan - counted against the batteries");
+    expect(root(card).querySelectorAll("svg.chart path")).toHaveLength(2);
+  });
+
   test("Forecast without LoadCast data says so instead of breaking", async () => {
     const card = await mount({ ...houseConfig, default_view: "forecast" });
     expect(root(card).textContent).toContain("No LoadCast forecast available.");

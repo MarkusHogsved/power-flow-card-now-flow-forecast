@@ -140,5 +140,26 @@ export const expectedImportKwh = (
   return grid;
 };
 
+/**
+ * A vehicle's energy to its limit spread evenly over its planned window, per
+ * forecast hour (kWh). Only the part of the window after `now` counts; an
+ * hour outside the window gets 0.
+ */
+export const vehicleByHour = (
+  hours: ForecastHour[],
+  kwh: number,
+  plan: { start: Date; end: Date },
+  now: Date,
+): number[] => {
+  const from = Math.max(plan.start.getTime(), now.getTime());
+  const to = plan.end.getTime();
+  if (to <= from || kwh <= 0) return hours.map(() => 0);
+  return hours.map((h) => {
+    const a = Math.max(h.start.getTime(), from);
+    const b = Math.min(h.start.getTime() + 3_600_000, to);
+    return b > a ? (kwh * (b - a)) / (to - from) : 0;
+  });
+};
+
 export const peakIndex = (hours: ForecastHour[]): number =>
   hours.reduce((best, h, i) => (h.kwh > hours[best].kwh ? i : best), 0);
