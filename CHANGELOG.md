@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3
+
+- New `large_loads[].presence`: the vehicle's device_tracker and/or an on/off
+  switch (one entity or a list). Forecast leaves the vehicle out while it is
+  away or the switch is off. Unknown or unavailable count as home.
+
 ## 0.4.2
 
 - Forecast: a vehicle below its charge limit is part of the picture. The
