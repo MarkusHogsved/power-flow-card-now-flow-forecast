@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+- Now: the phases always share one row under the fuse label. On a phone L3
+  wrapped to a line of its own, which made L1 look like the highest phase.
+
 ## 0.4.0
 
 - New `grid.sell_price`: what a sold kWh earns, when it differs from

@@ -279,6 +279,14 @@ describe("card", () => {
     expect(event.querySelector("svg.chart")).not.toBeNull();
   });
 
+  test("all phases share one row, under the fuse label", async () => {
+    const card = await mount(houseConfig);
+    const row = root(card).querySelector<HTMLElement>(".phases")!;
+    expect(row.style.gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))");
+    expect(row.querySelector(".phases-title")?.textContent).toContain("25");
+    expect(row.querySelectorAll(".phase")).toHaveLength(3);
+  });
+
   test("the header price can be renamed", async () => {
     const card = await mount({ ...houseConfig, grid: { ...houseConfig.grid!, price_name: "Price" } });
     expect(root(card).querySelector(".price")?.textContent).toContain("Price");

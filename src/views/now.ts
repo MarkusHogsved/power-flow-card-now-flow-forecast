@@ -247,12 +247,12 @@ export const renderNow = (ctx: ViewContext) => {
 
       ${m.phases.length
         ? html`
-            <div class="phases">
-              <span class="muted">${t("fuse", { amps: String(m.fuseA) })}</span>
+            <div class="phases" style="grid-template-columns: repeat(${m.phases.length}, minmax(0, 1fr))">
+              <span class="muted phases-title">${t("fuse", { amps: String(m.fuseA) })}</span>
               ${m.phases.map(
                 (p) => html`<span class="phase">
                   ${p.name}
-                  <span class="track small">
+                  <span class="track phase-track">
                     <span
                       style="width: ${Math.min(Math.abs(p.amps ?? 0) / m.fuseA, 1) * 100}%; background: ${Math.abs(p.amps ?? 0) > m.fuseA * 0.88 ? "#E57F84" : COLORS.grid}"
                     ></span>

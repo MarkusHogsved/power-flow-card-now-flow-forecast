@@ -271,19 +271,30 @@ export const styles = css`
     gap: 6px 16px;
     font-size: 13px;
   }
+  /* All phases on one row, whatever the width - wrapping put L3 alone on a
+     line on a phone and made L1 look like the one past the fuse. */
   .phases {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
     align-items: center;
     gap: 6px 12px;
     font-size: 12px;
     border-top: 1px solid var(--nff-track);
     padding-top: 12px;
   }
+  .phases-title {
+    grid-column: 1 / -1;
+  }
   .phase {
     display: flex;
     align-items: center;
     gap: 4px;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .phase-track {
+    flex: 1;
+    min-width: 16px;
+    height: 6px;
   }
   .track {
     height: 8px;
