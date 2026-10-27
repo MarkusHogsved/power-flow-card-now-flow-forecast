@@ -48,9 +48,19 @@ export interface LoadState {
   costPrice?: number | null;
   /** Cost of the session so far from `session_cost`, null when not configured or unavailable. */
   sessionCost?: number | null;
+  /** Planned charging window from `charge_plan`, null when not set or unreadable. */
+  plan?: { start: Date; end: Date } | null;
 }
 
 /** Battery level, charge limit and energy still to draw for a load that is a vehicle. */
+/** A date and time from an entity's state ("2026-10-27 19:45:00" or ISO), null if unreadable. */
+const readDateTime = (hass: HomeAssistant, entityId: string | undefined): Date | null => {
+  const s = entityId ? hass.states[entityId]?.state : undefined;
+  if (!s || !/^\d{4}-\d{2}-\d{2}/.test(s)) return null;
+  const d = new Date(s.includes("T") ? s : s.replace(" ", "T"));
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 const vehicle = (hass: HomeAssistant, l: LoadConfig): Partial<LoadState> => {
   if (!l.soc) return {};
   const soc = readNumber(hass, l.soc);
@@ -61,7 +71,10 @@ const vehicle = (hass: HomeAssistant, l: LoadConfig): Partial<LoadState> => {
       : null;
   const costPrice = l.cost_price ? readNumber(hass, l.cost_price) : null;
   const sessionCost = l.session_cost ? readNumber(hass, l.session_cost) : null;
-  return { soc, socEntity: l.soc, socLimit, toLimitKwh, costPrice, sessionCost };
+  const start = readDateTime(hass, l.charge_plan?.[0]);
+  const end = readDateTime(hass, l.charge_plan?.[1]);
+  const plan = start && end && end > start ? { start, end } : null;
+  return { soc, socEntity: l.soc, socLimit, toLimitKwh, costPrice, sessionCost, plan };
 };
 
 export interface Flows {
@@ -87,6 +100,8 @@ export interface Model {
   batteryDischargeW: number;
   /** Large loads at or above their threshold, highest power first. */
   running: LoadState[];
+  /** Large loads that are a vehicle (have `soc`), running or not, in config order. */
+  vehicles: LoadState[];
   /** Always-on loads, in config order. */
   loads: LoadState[];
   /** Home power not covered by any configured load. */
@@ -194,6 +209,7 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
     ...powers,
     batteries,
     running,
+    vehicles: large.map((l) => l.state).filter((l) => l.soc !== undefined),
     loads,
     restW,
     flows: computeFlows(powers),

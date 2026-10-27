@@ -98,6 +98,13 @@ export interface LoadConfig {
   charge_efficiency?: number;
   /** Price per kWh for the cost line (e.g. a sensor that weighs in the house battery's value), instead of the spot price. */
   cost_price?: string;
+  /**
+   * When the vehicle is planned to charge: two entities (start, end) holding a
+   * date and time, e.g. a smart charging automation's input_datetime helpers.
+   * The Forecast places the energy left to the limit in that window and
+   * counts it as bought from the grid rather than drawn from the batteries.
+   */
+  charge_plan?: [string, string];
   /** What the current charging session has cost so far (an entity in the price's currency). The tile then shows the whole session: this plus what is left to the limit. */
   session_cost?: string;
 }

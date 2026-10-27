@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, solarTakeoverIndex, sumKwh, usableBatteryKwh } from "../src/forecast";
+import { expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
 import type { BatteryState } from "../src/model";
 import { makeHass } from "./helpers";
 
@@ -120,5 +120,24 @@ describe("expectedImportKwh", () => {
     const solar = new Map([[at(12).getTime(), 6]]);
     // 12: +4 kWh into an empty battery, 13: 3 kWh drawn from it
     expect(expectedImportKwh(hours(12, [2, 3]), solar, [battery(10)], at(12), at(24))).toBe(0);
+  });
+});
+
+describe("vehicleByHour", () => {
+  const hours = [0, 1, 2, 3].map((h) => ({ start: new Date(2026, 9, 27, 19 + h), kwh: 1, p10: 1, p90: 1 }));
+  test("spreads the energy evenly over the planned window", () => {
+    // 19:45-23:00 = 3.25 h; 30 kWh
+    const kwh = vehicleByHour(hours, 30, { start: new Date(2026, 9, 27, 19, 45), end: new Date(2026, 9, 27, 23) }, new Date(2026, 9, 27, 19, 30));
+    expect(kwh[0]).toBeCloseTo((30 * 0.25) / 3.25);
+    expect(kwh[1]).toBeCloseTo(30 / 3.25);
+    expect(kwh.reduce((a, b) => a + b, 0)).toBeCloseTo(30);
+  });
+  test("only the part of the window still ahead counts", () => {
+    const kwh = vehicleByHour(hours, 10, { start: new Date(2026, 9, 27, 19), end: new Date(2026, 9, 27, 21) }, new Date(2026, 9, 27, 20));
+    expect(kwh).toEqual([0, 10, 0, 0]);
+  });
+  test("a window that has ended gives nothing", () => {
+    const kwh = vehicleByHour(hours, 10, { start: new Date(2026, 9, 27, 17), end: new Date(2026, 9, 27, 18) }, new Date(2026, 9, 27, 19));
+    expect(kwh).toEqual([0, 0, 0, 0]);
   });
 });
