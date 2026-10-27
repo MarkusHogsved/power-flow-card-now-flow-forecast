@@ -50,6 +50,8 @@ export interface LoadState {
   sessionCost?: number | null;
   /** Planned charging window from `charge_plan`, null when not set or unreadable. */
   plan?: { start: Date; end: Date } | null;
+  /** False when `presence` says the vehicle is away. */
+  home?: boolean;
 }
 
 /** Battery level, charge limit and energy still to draw for a load that is a vehicle. */
@@ -74,7 +76,9 @@ const vehicle = (hass: HomeAssistant, l: LoadConfig): Partial<LoadState> => {
   const start = readDateTime(hass, l.charge_plan?.[0]);
   const end = readDateTime(hass, l.charge_plan?.[1]);
   const plan = start && end && end > start ? { start, end } : null;
-  return { soc, socEntity: l.soc, socLimit, toLimitKwh, costPrice, sessionCost, plan };
+  const where = l.presence ? hass.states[l.presence]?.state : undefined;
+  const home = where === undefined || ["home", "unknown", "unavailable"].includes(where);
+  return { soc, socEntity: l.soc, socLimit, toLimitKwh, costPrice, sessionCost, plan, home };
 };
 
 export interface Flows {

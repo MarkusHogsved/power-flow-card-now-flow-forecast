@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3
+
+- New `large_loads[].presence` (e.g. the vehicle's device_tracker): Forecast
+  leaves the vehicle out while it is away. Unknown or unavailable count as
+  home.
+
 ## 0.4.2
 
 - Forecast: a vehicle below its charge limit is part of the picture. The

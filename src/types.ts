@@ -105,6 +105,12 @@ export interface LoadConfig {
    * counts it as bought from the grid rather than drawn from the batteries.
    */
   charge_plan?: [string, string];
+  /**
+   * Where the vehicle is, e.g. its device_tracker. Forecast only counts the
+   * vehicle while it is home; unknown/unavailable count as home (a tracker
+   * that drops out has rarely moved).
+   */
+  presence?: string;
   /** What the current charging session has cost so far (an entity in the price's currency). The tile then shows the whole session: this plus what is left to the limit. */
   session_cost?: string;
 }

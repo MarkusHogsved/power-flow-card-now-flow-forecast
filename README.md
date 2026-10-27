@@ -131,6 +131,7 @@ loadcast:
 | `large_loads[].capacity_kwh` | Battery size (kWh). Adds energy left to the limit, finish time at the current power and the cost at the current spot price. |
 | `large_loads[].charge_efficiency` | Share of the energy that ends up in the battery, default 0.9. |
 | `large_loads[].charge_plan` | `[start, end]` – two entities holding the planned charging window (date and time, e.g. `input_datetime` helpers of a smart charging automation). Forecast draws the energy left to the limit in that window and counts it as bought from the grid; without a plan it is counted against the batteries. |
+| `large_loads[].presence` | Where the vehicle is, e.g. its `device_tracker`. Forecast leaves it out unless it is `home` (unknown/unavailable count as home). |
 | `large_loads[].session_cost` | What the current charging session has cost so far (an entity in the price's currency). The cost line then shows the whole session – so far plus what is left to the limit – as *~x SEK this charge*. Review shows what each charge cost. |
 | `large_loads[].cost_price` | An entity with the price per kWh for the cost line, instead of the spot price – e.g. a sensor that weighs in what energy from the house battery is worth. Shown as *~x SEK estimated*. |
 | `loads[]` | `entity`, `name`. Always listed under *Other*, together with *Rest of home* (home minus all configured loads). |

@@ -89,7 +89,7 @@ export const renderForecast = (ctx: ViewContext) => {
   // Vehicles below their limit: planned charging is bought from the grid (and
   // shown in the chart); without a plan the energy is counted against the batteries.
   const vehicles = m.vehicles
-    .filter((v) => (v.toLimitKwh ?? 0) > 0.5)
+    .filter((v) => v.home !== false && (v.toLimitKwh ?? 0) > 0.5)
     .map((v) => {
       const plan = v.plan && v.plan.end > now ? v.plan : null;
       return { v, kwh: v.toLimitKwh as number, plan, byHour: plan ? vehicleByHour(hours, v.toLimitKwh as number, plan, now) : null };
