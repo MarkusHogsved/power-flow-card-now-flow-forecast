@@ -7,6 +7,7 @@
 
 #include "esphome/components/font/font.h"
 #include "esphome/components/json/json_util.h"
+#include "esphome/components/time/real_time_clock.h"
 #include "esphome/core/component.h"
 #include "lvgl.h"
 
@@ -44,6 +45,7 @@ class EnergyUi : public Component {
   void set_font_bold(font::Font *f) { this->bold_ = f->get_lv_font(); }
   void set_font_large(font::Font *f) { this->large_ = f->get_lv_font(); }
   void set_font_icons(font::Font *f) { this->icons_ = f->get_lv_font(); }
+  void set_time(time::RealTimeClock *t) { this->time_ = t; }
 
   // After LVGL itself (setup_priority::PROCESSOR)
   float get_setup_priority() const override { return setup_priority::PROCESSOR - 10; }
@@ -67,6 +69,7 @@ class EnergyUi : public Component {
   std::string url_;
   uint32_t interval_ms_{3000};
   const lv_font_t *small_{}, *medium_{}, *bold_{}, *large_{}, *icons_{};
+  time::RealTimeClock *time_{};
 
   // Fetch task -> loop
   std::mutex mutex_;

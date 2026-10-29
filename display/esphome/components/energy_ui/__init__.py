@@ -5,11 +5,12 @@ texts and figures are the card's own; this component only lays them out.
 """
 
 import esphome.codegen as cg
+from esphome.components import time
 from esphome.components.esp32 import request_http_client
 from esphome.components.lvgl.defines import TYPE_FLEX, add_lv_use
 from esphome.components.lvgl.lv_validation import lv_font
 import esphome.config_validation as cv
-from esphome.const import CONF_ID, CONF_URL
+from esphome.const import CONF_ID, CONF_TIME_ID, CONF_URL
 
 CONF_POLL_INTERVAL = "poll_interval"
 
@@ -34,6 +35,8 @@ CONFIG_SCHEMA = cv.All(
     {
         cv.GenerateID(): cv.declare_id(EnergyUi),
         cv.Required(CONF_URL): cv.url,
+        # The clock in the header, shown in 24 h (without it the header has none)
+        cv.Optional(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
         cv.Optional(CONF_POLL_INTERVAL, default="3s"): cv.positive_time_period_milliseconds,
         # lv_font: registers the fonts with LVGL (get_lv_font())
         **{cv.Required(key): lv_font for key in FONTS},
@@ -50,5 +53,7 @@ async def to_code(config):
     await cg.register_component(var, config)
     cg.add(var.set_url(config[CONF_URL]))
     cg.add(var.set_interval_ms(config[CONF_POLL_INTERVAL].total_milliseconds))
+    if CONF_TIME_ID in config:
+        cg.add(var.set_time(await cg.get_variable(config[CONF_TIME_ID])))
     for key in FONTS:
         cg.add(getattr(var, f"set_{key}")(await cg.get_variable(config[key])))
