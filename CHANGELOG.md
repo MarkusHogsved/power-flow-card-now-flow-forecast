@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+- New `snapshot()` on the card: the Now view as plain data with the card's
+  own texts (header, nodes, flows, battery bank, running loads, others,
+  phases). The display renderer serves it as `/model.json`, so a display can
+  draw its own interface instead of showing a picture of the card.
+- Display: `display/esphome/waveshare-esp32-p4-wifi6-touch-lcd-7b-native.yaml`
+  and the `energy_ui` ESPHome component draw the Now view natively with LVGL
+  on a Waveshare ESP32-P4-WIFI6-Touch-LCD-7B. The picture variant for the
+  same board is `waveshare-esp32-p4-wifi6-touch-lcd-7b.yaml`.
+
 ## 0.4.3
 
 - New `large_loads[].presence`: the vehicle's device_tracker and/or an on/off

@@ -41,6 +41,22 @@ describe("card", () => {
     expect(price).toContain("SEK/kWh");
   });
 
+  test("snapshot carries the Now view as plain data with the card's own texts", async () => {
+    const card = await mount(houseConfig, { ...eveningStates, "sensor.anker_charge": "1210", "sensor.ev": "11000" });
+    const snap = card.snapshot()!;
+    const r = root(card);
+    expect(snap.v).toBe(1);
+    expect(snap.header.title).toBe(r.querySelector(".title")?.textContent);
+    expect(snap.header.subtitle).toBe(r.querySelector(".subtitle")?.textContent?.trim());
+    expect(snap.header.price?.value).toBe("1.23");
+    expect(snap.bank.text).toBe(r.querySelector(".bank .row b")?.textContent?.trim());
+    expect(snap.home.text).toBe("1.95 kW");
+    expect(snap.running.map((l) => l.text)).toEqual(["11.0 kW"]);
+    expect(snap.colors.solar).toBe(0xf5b942);
+    // Plain data: survives JSON, as it travels to the display
+    expect(JSON.parse(JSON.stringify(snap))).toEqual(snap);
+  });
+
   test("battery bank shows discharge and charge separately, not a net figure", async () => {
     const card = await mount(houseConfig, { ...eveningStates, "sensor.anker_charge": "1210" });
     const head = root(card).querySelector(".bank .row b")?.textContent?.replace(/\s+/g, " ");

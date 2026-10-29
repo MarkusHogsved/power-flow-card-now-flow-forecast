@@ -1,0 +1,263 @@
+# Power Flow Card on a Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024x600 MIPI-DSI,
+# GT911 touch, Wi-Fi on an ESP32-C6 co-processor over SDIO).
+#
+# Same idea as waveshare-esp32-s3-touch-lcd-7.yaml: the card is rendered by
+# display/renderer (headless Chromium) and fetched as a JPEG, taps and swipes
+# travel back in the picture URL. Run the renderer with WIDTH=1024 HEIGHT=600.
+#
+# The P4 drives the panel over MIPI-DSI and has Wi-Fi on a separate chip, so
+# the panel no longer starves the radio as it did on the S3 board.
+#
+# Pins: ESPHome's WAVESHARE-ESP32-P4-WIFI6-TOUCH-LCD-7B preset (panel, reset
+# GPIO33) and Waveshare's BSP (backlight GPIO32 inverted PWM, I2C SDA GPIO7 /
+# SCL GPIO8, C6 on SDIO GPIO14-19 with reset GPIO54).
+substitutions:
+  name: energy-display-p4
+  friendly_name: Energy display P4
+  renderer_url: http://192.168.2.160:8099
+  refresh: 15s           # how often a new picture is fetched (a touch fetches at once)
+  sleep_after_min: "10"  # backlight off after this many minutes untouched, at night
+  night_from: "22"       # night = from this hour ...
+  night_to: "6"          # ... to this hour
+  # Chips before revision v3.0 (the first P4 boards) need true here. The
+  # revision is printed when the board is connected over USB.
+  engineering_sample: "false"
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2025.8.0
+
+esp32:
+  variant: ESP32P4
+  flash_size: 32MB
+  cpu_frequency: 360MHz
+  engineering_sample: ${engineering_sample}
+  framework:
+    type: esp-idf
+    advanced:
+      enable_idf_experimental_features: true
+    sdkconfig_options:
+      CONFIG_SPIRAM_FETCH_INSTRUCTIONS: "y"
+      CONFIG_SPIRAM_RODATA: "y"
+      # Room for picture downloads that linger next to the API connection
+      CONFIG_LWIP_MAX_SOCKETS: "16"
+
+esp32_hosted:
+  variant: ESP32C6
+  active_high: true
+  reset_pin: GPIO54
+  cmd_pin: GPIO19
+  clk_pin: GPIO18
+  d0_pin: GPIO14
+  d1_pin: GPIO15
+  d2_pin: GPIO16
+  d3_pin: GPIO17
+
+psram:
+  speed: 200MHz
+
+# Power for the MIPI-DSI PHY
+esp_ldo:
+  - channel: 3
+    voltage: 2.5V
+
+logger:
+  hardware_uart: UART0
+  logs:
+    component: ERROR
+
+api:
+
+ota:
+  - platform: esphome
+    # Picture downloads take most of the device's time; pause them so the
+    # update gets through
+    on_begin:
+      - component.suspend: frame
+    on_error:
+      - component.resume: frame
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+
+time:
+  - platform: homeassistant
+    id: ha_time
+
+http_request:
+  timeout: 10s
+  verify_ssl: false
+  buffer_size_rx: 8192
+
+# ---------------------------------------------------------------- Hardware
+
+i2c:
+  sda: GPIO7
+  scl: GPIO8
+  frequency: 400kHz
+  id: bus_a
+
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO32
+    inverted: true
+    frequency: 20kHz
+
+light:
+  - platform: monochromatic
+    id: backlight
+    name: Backlight
+    output: backlight_pwm
+    restore_mode: ALWAYS_ON
+    default_transition_length: 0s
+
+switch:
+  - platform: restart
+    name: Restart
+
+display:
+  - platform: mipi_dsi
+    id: panel
+    model: WAVESHARE-ESP32-P4-WIFI6-TOUCH-LCD-7B
+    update_interval: never
+    auto_clear_enabled: false
+    lambda: |-
+      // Nothing to draw until the first picture has arrived
+      if (id(frame_ready)) it.image(0, 0, id(frame));
+      // A ring where the screen was touched, until the next picture arrives
+      if (id(show_touch)) {
+        it.circle(id(touch_x0), id(touch_y0), 30, Color(255, 255, 255));
+        it.circle(id(touch_x0), id(touch_y0), 31, Color(255, 255, 255));
+        it.circle(id(touch_x0), id(touch_y0), 32, Color(80, 80, 80));
+      }
+
+# ---------------------------------------------------------------- The card
+
+online_image:
+  - id: frame
+    url: ${renderer_url}/frame.jpg
+    format: JPEG
+    type: RGB565
+    buffer_size: 65536     # the largest allowed; the renderer keeps pictures below it
+    update_interval: ${refresh}
+    on_download_finished:
+      - lambda: |-
+          if (!cached) id(frame_ready) = true;
+          id(show_touch) = false;
+          id(last_frame_ms) = millis();
+      # cached = the renderer answered 304 (picture unchanged): only the ring to remove
+      - component.update: panel
+      # A tap or swipe came while this picture was downloading: fetch again now
+      - if:
+          condition:
+            lambda: return id(refetch);
+          then:
+            - lambda: id(refetch) = false;
+            - component.update: frame
+    on_error:
+      - logger.log: "Could not fetch a picture from the renderer"
+
+# ---------------------------------------------------------------- Touch
+
+globals:
+  - id: last_frame_ms
+    type: uint32_t
+  - id: input_seq
+    type: uint32_t
+  - id: show_touch
+    type: bool
+  - id: refetch
+    type: bool
+  - id: frame_ready
+    type: bool
+    initial_value: "false"
+  - id: touch_x0
+    type: int
+  - id: touch_y0
+    type: int
+  - id: touch_x1
+    type: int
+  - id: touch_y1
+    type: int
+  - id: last_touch_ms
+    type: uint32_t
+  - id: woke_up
+    type: bool
+
+touchscreen:
+  platform: gt911
+  id: touch
+  i2c_id: bus_a
+  display: panel
+  # The GT911 reports coordinates rotated 180 degrees from the panel
+  transform:
+    mirror_x: true
+    mirror_y: true
+  on_touch:
+    - lambda: |-
+        id(touch_x0) = id(touch_x1) = touch.x;
+        id(touch_y0) = id(touch_y1) = touch.y;
+        id(last_touch_ms) = millis();
+        // A touch on a dark screen only wakes it up
+        id(woke_up) = !id(backlight).current_values.is_on();
+    - light.turn_on: backlight
+  on_update:
+    - lambda: |-
+        for (auto t : touches) {
+          id(touch_x1) = t.x;
+          id(touch_y1) = t.y;
+        }
+  # Taps and swipes travel in the picture URL (?tap=x,y&n=7), so there is
+  # only one HTTP request at a time and its answer shows the result.
+  on_release:
+    - if:
+        condition:
+          lambda: return !id(woke_up);
+        then:
+          - lambda: |-
+              id(input_seq)++;
+              // Moved more than 50 px: a swipe, otherwise a tap (shown with a ring)
+              id(show_touch) = abs(id(touch_x1) - id(touch_x0)) + abs(id(touch_y1) - id(touch_y0)) <= 50;
+              id(refetch) = true;
+          - component.update: panel
+          - online_image.set_url:
+              id: frame
+              url: !lambda |-
+                char buf[160];
+                if (id(show_touch))
+                  snprintf(buf, sizeof(buf), "${renderer_url}/frame.jpg?tap=%d,%d&n=%u",
+                           id(touch_x0), id(touch_y0), (unsigned) id(input_seq));
+                else
+                  snprintf(buf, sizeof(buf), "${renderer_url}/frame.jpg?swipe=%d,%d,%d,%d&n=%u",
+                           id(touch_x0), id(touch_y0), id(touch_x1), id(touch_y1), (unsigned) id(input_seq));
+                return std::string(buf);
+
+interval:
+  # Watchdog: no picture for 90 s (network stuck, e.g. out of sockets) -> restart
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            lambda: return millis() > 120000 && millis() - id(last_frame_ms) > 90000;
+          then:
+            - logger.log:
+                level: WARN
+                format: "No picture for 90 s, restarting"
+            - lambda: App.safe_reboot();
+  # Backlight off at night after a while untouched; a touch turns it on again
+  - interval: 30s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              auto now = id(ha_time).now();
+              if (!now.is_valid()) return false;
+              int from = ${night_from}, to = ${night_to};
+              bool night = from > to ? (now.hour >= from || now.hour < to) : (now.hour >= from && now.hour < to);
+              return night && millis() - id(last_touch_ms) > ${sleep_after_min} * 60000UL;
+          then:
+            - light.turn_off: backlight

@@ -25,6 +25,18 @@ loads the card from the HACS install on Home Assistant, so it runs the
 version you have installed. It goes back to the default view after
 `IDLE_RESET_S` seconds without a touch.
 
+## Native interface (ESP32-P4)
+
+A picture takes the display about two seconds to decode, so taps feel slow.
+On a Waveshare ESP32-P4-WIFI6-Touch-LCD-7B the card can instead be drawn
+natively: the renderer serves the card's `snapshot()` (the Now view as data,
+with the card's own texts) at `GET /model.json`, and the ESPHome component
+`esphome/components/energy_ui` lays it out with LVGL. The figures are the
+card's, the screen reacts at once and the flow dots move smoothly. Use
+`esphome/waveshare-esp32-p4-wifi6-touch-lcd-7b-native.yaml`; it loads the
+component from this repository. It needs card 0.5.0 or later installed in
+Home Assistant (the renderer runs the installed card).
+
 ## Setup
 
 1. **Token.** In Home Assistant, open your profile → *Security* → *Long-lived
