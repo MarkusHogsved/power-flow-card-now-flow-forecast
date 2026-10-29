@@ -297,6 +297,14 @@ void EnergyUi::build_() {
   lv_obj_set_size(right, RIGHT_W, 400);
   lv_obj_set_flex_flow(right, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(right, 8, 0);
+  // Several running loads (a vehicle has up to three extra lines) and the
+  // other loads can be taller than the column: it scrolls with a swipe
+  lv_obj_add_flag(right, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_flag(right, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_scroll_dir(right, LV_DIR_VER);
+  lv_obj_set_scrollbar_mode(right, LV_SCROLLBAR_MODE_ACTIVE);
+  lv_obj_set_style_bg_color(right, lv_color_hex(MUTED), LV_PART_SCROLLBAR);
+  lv_obj_set_style_bg_opa(right, LV_OPA_50, LV_PART_SCROLLBAR);
   this->running_title_ = lv_label_create(right);
   lv_obj_set_style_text_font(this->running_title_, this->small_, 0);
   lv_obj_set_style_text_color(this->running_title_, lv_color_hex(MUTED), 0);
