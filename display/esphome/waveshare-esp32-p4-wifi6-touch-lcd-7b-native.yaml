@@ -191,7 +191,7 @@ font:
 
 energy_ui:
   url: ${renderer_url}/model.json
-  update_interval: 3s
+  poll_interval: 3s
   font_small: roboto_16
   font_medium: roboto_20
   font_bold: roboto_20_bold
