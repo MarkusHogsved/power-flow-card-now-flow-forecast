@@ -18,7 +18,7 @@ static const char *const TAG = "energy_ui";
 // Palette, as the card on a black background
 static const uint32_t TEXT = 0xF2F2F2;
 static const uint32_t MUTED = 0xA8A8A8;
-static const uint32_t TRACK = 0x3A3F46;
+static const uint32_t TRACK = 0x4A5058;
 static const uint32_t NODE_BORDER = 0x3A3F46;
 static const uint32_t TILE_BG = 0x111418;
 static const uint32_t WARN = 0xE57F84;
@@ -366,19 +366,27 @@ void EnergyUi::rebuild_cells_(size_t n) {
   if (this->cells_.size() == n) return;
   lv_obj_clean(this->bank_cells_);
   this->cells_.clear();
+  int w = n ? 280 / (int) n : 280;
   for (size_t k = 0; k < n; k++) {
+    // Level and arrow, the name under it, then a level bar across the cell
     BatteryCell c;
     c.box = plain(this->bank_cells_);
-    lv_obj_set_size(c.box, 280 / (int) n, 78);
+    lv_obj_set_size(c.box, w, 78);
+    c.soc = this->label_(c.box, this->bold_, TEXT, 0, 2);
+    lv_obj_set_width(c.soc, w);
+    lv_obj_set_style_text_align(c.soc, LV_TEXT_ALIGN_CENTER, 0);
+    c.name = this->label_(c.box, this->small_, MUTED, 0, 28);
+    lv_obj_set_width(c.name, w - 4);
+    lv_obj_set_style_text_align(c.name, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_long_mode(c.name, LV_LABEL_LONG_MODE_DOTS);
     c.bar = lv_bar_create(c.box);
-    lv_obj_set_size(c.bar, 22, 58);
-    lv_obj_set_pos(c.bar, 4, 10);
+    lv_obj_set_size(c.bar, w - 16, 8);
+    lv_obj_set_pos(c.bar, 8, 58);
     lv_bar_set_range(c.bar, 0, 100);
     lv_obj_set_style_radius(c.bar, 4, 0);
     lv_obj_set_style_radius(c.bar, 4, LV_PART_INDICATOR);
     lv_obj_set_style_bg_color(c.bar, lv_color_hex(TRACK), 0);
-    c.soc = this->label_(c.box, this->bold_, TEXT, 34, 14);
-    c.name = this->label_(c.box, this->small_, MUTED, 34, 42);
+    lv_obj_set_style_bg_opa(c.bar, LV_OPA_COVER, 0);
     this->cells_.push_back(c);
   }
 }
@@ -439,7 +447,6 @@ void EnergyUi::apply_(JsonObject root) {
   set_text(this->title_, h["title"] | "");
   set_text(this->subtitle_, h["subtitle"] | "");
   set_text(this->reason_, h["reason"].isNull() ? "" : (h["reason"]["text"] | ""));
-  set_text(this->clock_, root["time"] | "");
   if (h["price"].isNull()) {
     show(this->price_box_, false);
   } else {
@@ -541,6 +548,7 @@ void EnergyUi::apply_(JsonObject root) {
       lv_obj_set_size(bar, w - 48, 10);
       lv_bar_set_range(bar, 0, 1000);
       lv_obj_set_style_bg_color(bar, lv_color_hex(TRACK), 0);
+      lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
       lv_obj_t *text = this->label_(this->screen_, this->small_, MUTED, x + 34, 568);
       this->phase_names_.push_back(name);
       this->phases_.push_back({bar, text});
@@ -571,6 +579,15 @@ void EnergyUi::loop() {
       this->apply_(doc.as<JsonObject>());
     } else {
       ESP_LOGW(TAG, "model.json: unexpected content (%u bytes)", (unsigned) body.size());
+    }
+  }
+  // The clock runs here, from Home Assistant's time, so it ticks between updates
+  if (this->time_ != nullptr) {
+    auto now = this->time_->now();
+    if (now.is_valid()) {
+      char buf[8];
+      snprintf(buf, sizeof(buf), "%02d:%02d", now.hour, now.minute);
+      set_text(this->clock_, buf);
     }
   }
   // No fresh model for a minute: say so, the figures on screen are getting old
