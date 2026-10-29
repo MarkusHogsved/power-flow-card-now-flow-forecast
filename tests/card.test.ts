@@ -17,6 +17,8 @@ const root = (card: PowerFlowCardNowFlowForecast) => card.shadowRoot as ShadowRo
 const tab = (card: PowerFlowCardNowFlowForecast, label: string) =>
   [...root(card).querySelectorAll<HTMLButtonElement>(".tabs button")].find((b) => b.textContent?.trim() === label)!;
 
+const eventStatesWithEv = () => ({ ...eveningStates, "sensor.ev": "11000", "sensor.ev_soc": "73", "sensor.ev_session_cost": "8.4" });
+
 beforeEach(() => {
   document.body.innerHTML = "";
   localStorage.clear();
@@ -350,6 +352,79 @@ describe("card", () => {
     event.click();
     await card.updateComplete;
     expect(event.querySelector("svg.chart")).not.toBeNull();
+  });
+
+  test("snapshotFull carries every view; Review and vehicle texts match the rendered card", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc", session_cost: "sensor.ev_session_cost" };
+    const config = { ...houseConfig, large_loads: [ev] };
+    const states = { ...eventStatesWithEv() };
+    const card = await mount(config, states);
+    const hass = makeHass(states);
+    const calls: Record<string, unknown>[] = [];
+    hass.callWS = (async (msg: Record<string, unknown>) => {
+      calls.push(msg);
+      return {
+        "sensor.ev": [{ s: "0", lu: now - 20 * 3600 }, { s: "10000", lu: now - 3 * 3600 }],
+        "sensor.ev_soc": [{ s: "48", lu: now - 20 * 3600 }, { s: "73", lu: now - 1800 }],
+        "sensor.ev_session_cost": [{ s: "0", lu: now - 3 * 3600 }, { s: "8.4", lu: now - 1800 }],
+      };
+    }) as HomeAssistant["callWS"];
+    card.hass = hass;
+    // The first snapshot answers at once; the history arrives in the background
+    const first = (await card.snapshotFull())!;
+    expect(first.vehicles).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 0));
+    await card.updateComplete;
+    const snap = (await card.snapshotFull())!;
+    expect(snap.v).toBe(2);
+    expect(snap.tabs).toEqual(["Now", "Flow", "Forecast", "Review"]);
+    expect(snap.home.text).toBe("1.95 kW");
+    expect(snap.flow.ribbons.length).toBeGreaterThan(0);
+    expect(snap.flow.sinks.map((b) => b.label)).toContain("EV 11.0 kW");
+    expect(snap.forecast.title).toBe("Home demand, next 24 h");
+    // Review: the event text is the rendered card's, piece by piece
+    const review = snap.review as Extract<typeof snap.review, { events: unknown }>;
+    const evEvent = review.events.find((e) => e.title.includes("EV"))!;
+    tab(card, "Review").click();
+    await card.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await card.updateComplete;
+    const rendered = [...root(card).querySelectorAll<HTMLElement>(".event")].find((e) => e.textContent?.includes("EV"))!;
+    expect(rendered.querySelector(".event-text")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+      evEvent.text.map((s) => s.t).join("").replace(/\s+/g, " ").trim(),
+    );
+    // The running vehicle's last 12 h, in even buckets
+    expect(snap.vehicles).toHaveLength(1);
+    expect(snap.vehicles[0].power).toHaveLength(144);
+    expect(snap.vehicles[0].power[143]).toBeCloseTo(10000, -2);
+    expect(snap.vehicles[0].soc[143]).toBe(73);
+    // Plain data
+    expect(JSON.parse(JSON.stringify(snap))).toEqual(snap);
+    // A further snapshot within the cache times fetches nothing
+    const n = calls.length;
+    await card.snapshotFull();
+    expect(calls.length).toBe(n);
+  });
+
+  test("snapshotFull never waits for history: a hanging recorder still gives live figures", async () => {
+    const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc" };
+    const states = eventStatesWithEv();
+    const card = await mount({ ...houseConfig, large_loads: [ev] }, states);
+    const hass = makeHass(states);
+    let calls = 0;
+    hass.callWS = (() => {
+      calls++;
+      return new Promise(() => undefined); // never answers
+    }) as HomeAssistant["callWS"];
+    card.hass = hass;
+    const snap = await Promise.race([card.snapshotFull(), new Promise((r) => setTimeout(() => r("timeout"), 100))]);
+    expect(snap).not.toBe("timeout");
+    expect((snap as { home: { text: string } }).home.text).toBe("1.95 kW");
+    // and it does not ask again on every poll
+    const n = calls;
+    await card.snapshotFull();
+    expect(calls).toBe(n);
   });
 
   test("all phases share one row, under the fuse label", async () => {

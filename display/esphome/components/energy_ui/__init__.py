@@ -26,7 +26,7 @@ FONTS = ["font_small", "font_medium", "font_bold", "font_large", "font_icons"]
 def _lv_parts(config):
     # ESPHome compiles only the LVGL widgets the yaml uses; this component
     # creates its own. Added while validating, before LVGL generates its code.
-    add_lv_use("label", "line", "bar", TYPE_FLEX)
+    add_lv_use("label", "line", "bar", "image", "canvas", TYPE_FLEX)
     return config
 
 

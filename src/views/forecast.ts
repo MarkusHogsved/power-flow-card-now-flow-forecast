@@ -22,7 +22,7 @@ const SVG_H = 96;
 const hh = (d: Date): string => String(d.getHours()).padStart(2, "0");
 
 /** A vehicle's planned charging on top of the home demand, per hour. */
-interface VehicleLayer {
+export interface VehicleLayer {
   kwh: number[];
   color: string;
 }
@@ -75,7 +75,8 @@ const chart = (hours: ForecastHour[], ev: VehicleLayer | null) => {
   `;
 };
 
-export const renderForecast = (ctx: ViewContext) => {
+/** Everything Forecast shows, computed once - shared with the display snapshot. */
+export const forecastData = (ctx: ViewContext) => {
   const { hass, config, model: m, now } = ctx;
   const hours = readLoadCast(hass, config.loadcast?.forecast, now);
   const error = readNumber(hass, config.loadcast?.error);
@@ -106,6 +107,13 @@ export const renderForecast = (ctx: ViewContext) => {
     const u = formatUntil(hass, d, now);
     return u.tomorrow ? t("forecast.tomorrow_at", { time: u.time }) : u.time;
   };
+  return { hours, error, solarTomorrow, takeover, homeDemand, usable, vehicles, evLayer, evTotal, demand, scale, at };
+};
+
+export const renderForecast = (ctx: ViewContext) => {
+  const { hass, config } = ctx;
+  const { hours, error, solarTomorrow, takeover, homeDemand, usable, vehicles, evLayer, evTotal, demand, scale, at } =
+    forecastData(ctx);
 
   return html`
     <div class="view">

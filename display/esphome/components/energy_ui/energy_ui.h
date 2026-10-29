@@ -1,9 +1,12 @@
 #pragma once
 
 #include <atomic>
+#include <map>
 #include <mutex>
 #include <string>
 #include <vector>
+
+#include "canvas.h"
 
 #include "esphome/components/font/font.h"
 #include "esphome/components/json/json_util.h"
@@ -31,6 +34,9 @@ struct FlowLine {
   lv_obj_t *dot{};
   uint32_t duration_ms{};
 };
+
+/// MDI glyph for an icon name ("mdi:car-electric"), from the icon font
+const char *icon_glyph(const char *icon);
 
 struct BatteryCell {
   lv_obj_t *box{}, *bar{}, *soc{}, *name{};
@@ -62,6 +68,26 @@ class EnergyUi : public Component {
   void rebuild_cells_(size_t n);
   void rebuild_running_(JsonArray running);
   void rebuild_others_(size_t n);
+
+  // The other views, tabs and the vehicle chart (views.cpp)
+  static const int VIEWS = 4;
+  static void tab_cb(lv_event_t *e);
+  static void tile_cb(lv_event_t *e);
+  static void overlay_cb(lv_event_t *e);
+  void build_tabs_();
+  void select_(int view);
+  void build_flow_();
+  void build_forecast_();
+  void build_review_();
+  void build_overlay_();
+  void apply_flow_(JsonObject f);
+  void apply_forecast_(JsonObject f);
+  void apply_review_(JsonObject r);
+  void apply_vehicles_(JsonArray list);
+  void open_overlay_(const std::string &entity);
+  void close_overlay_();
+  void draw_overlay_();
+  lv_obj_t *text_(lv_obj_t *parent, const lv_font_t *font, uint32_t color, const char *text);
 
   lv_obj_t *label_(lv_obj_t *parent, const lv_font_t *font, uint32_t color, int x, int y);
   lv_obj_t *box_(lv_obj_t *parent, int x, int y, int w, int h, uint32_t border, int border_w);
@@ -97,6 +123,34 @@ class EnergyUi : public Component {
   std::vector<lv_obj_t *> phase_names_;
   std::vector<FlowLine> flows_;
   bool built_{false};
+
+  // Everything but the tab rail and the vehicle chart lives in main_
+  lv_obj_t *main_{};
+  lv_obj_t *views_[VIEWS]{};
+  lv_obj_t *tabs_[VIEWS]{};
+  lv_obj_t *tab_labels_[VIEWS]{};
+  lv_obj_t *tab_icons_[VIEWS]{};
+  int view_{0};
+  std::vector<std::string> running_entities_;
+
+  lv_obj_t *fl_src_title_{}, *fl_use_title_{}, *fl_labels_{}, *fl_nothing_{}, *fl_bats_{}, *fl_stats_{};
+  Canvas fl_canvas_;
+  std::string fl_key_;
+
+  lv_obj_t *fc_title_{}, *fc_total_{}, *fc_plus_{}, *fc_labels_{}, *fc_band_{}, *fc_unavailable_{};
+  lv_obj_t *fc_last_title_{}, *fc_rows_{}, *fc_tomorrow_{}, *fc_tomorrow_label_{}, *fc_tomorrow_value_{};
+  Canvas fc_canvas_;
+  std::string fc_key_;
+
+  lv_obj_t *rv_period_{}, *rv_message_{}, *rv_headline_{}, *rv_sub_{}, *rv_tiles_{}, *rv_ticks_{}, *rv_legend_{};
+  lv_obj_t *rv_events_title_{}, *rv_events_{}, *rv_footer_{}, *rv_footer_text_{}, *rv_footer_verdict_{};
+  Canvas rv_canvas_;
+  std::string rv_key_;
+
+  lv_obj_t *ov_{}, *ov_title_{}, *ov_power_{}, *ov_soc_{}, *ov_ticks_{};
+  Canvas ov_canvas_;
+  std::string ov_entity_, ov_key_;
+  std::map<std::string, std::string> vehicles_;  // entity -> its history as JSON
 };
 
 }  // namespace energy_ui

@@ -3,6 +3,7 @@ import { formatEnergy, formatNumber, formatPercent, formatPower } from "../hass"
 import { COLORS } from "../model";
 import type { Review, ReviewEvent, Verdict } from "../review";
 import { t } from "../strings";
+import type { HomeAssistant } from "../types";
 import type { ViewContext } from "./context";
 import { vehicleChart } from "./vehicle";
 
@@ -20,15 +21,15 @@ const PLOT_H = 110;
 const MARK_Y = PLOT_H + 4;
 const SVG_H = MARK_Y + 22;
 
-const PRICE_COLORS = { cheap: "#7FC97F", mid: "#F0C05A", expensive: "#E57F84" };
-const VERDICT_COLORS: Record<Verdict, string> = {
+export const PRICE_COLORS = { cheap: "#7FC97F", mid: "#F0C05A", expensive: "#E57F84" };
+export const VERDICT_COLORS: Record<Verdict, string> = {
   good: "#7FC97F",
   ok: "#F0C05A",
   bad: "#E57F84",
   neutral: "var(--nff-track)",
 };
 
-const hhmm = (ms: number): string => {
+export const hhmm = (ms: number): string => {
   const d = new Date(ms);
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
@@ -41,7 +42,7 @@ const duration = (ms: number): string => {
 };
 
 /** Price class against the period average: below 75 % cheap, above 125 % expensive. */
-const priceClass = (price: number, avg: number): keyof typeof PRICE_COLORS =>
+export const priceClass = (price: number, avg: number): keyof typeof PRICE_COLORS =>
   price < avg * 0.75 ? "cheap" : price > avg * 1.25 ? "expensive" : "mid";
 
 const chart = (r: Review, hours: ReviewHours) => {
@@ -116,86 +117,118 @@ const legend = (r: Review, battery: string | undefined) => {
   </div>`;
 };
 
-const ICONS: Record<ReviewEvent["kind"], string> = {
+export const ICONS: Record<ReviewEvent["kind"], string> = {
   battery: "mdi:battery-charging",
   load: "mdi:flash",
   solar: "mdi:white-balance-sunny",
   export: "mdi:transmission-tower-export",
 };
 
-const eventCard = (ctx: ViewContext, e: ReviewEvent, unit: string, avgPrice: number | null) => {
-  const { hass } = ctx;
+/** A piece of text; `b` pieces are bold, in `c` when given (shared with the display snapshot). */
+export type Segment = string | { t: string; b: true; c?: string };
+
+const verdictHex = (v: Verdict): string | undefined => (v === "neutral" ? undefined : VERDICT_COLORS[v]);
+
+const socSpan = (hass: HomeAssistant, e: ReviewEvent): Segment[] =>
+  e.socFrom !== undefined && e.socTo !== undefined && Number.isFinite(e.socFrom) && Number.isFinite(e.socTo)
+    ? [`${formatNumber(hass, Math.round(e.socFrom), 0)} → ${formatPercent(hass, e.socTo)} · `]
+    : [];
+
+/** Title and text of an event card. */
+export const eventTexts = (
+  hass: HomeAssistant,
+  e: ReviewEvent,
+  unit: string,
+  avgPrice: number | null,
+): { title: string; text: Segment[]; border: string | undefined } => {
   const price = (p: number) => `${formatNumber(hass, p, 2)} ${unit}`;
   const currency = unit.split("/")[0].trim();
   const money = (v: number) => `${formatNumber(hass, v, Math.abs(v) < 10 ? 2 : 0)}${currency ? ` ${currency}` : ""}`;
   const energy = `~${formatEnergy(hass, e.kwh)}`;
 
-  const pricing = () => {
-    if (e.avgPrice === null) return t("review.mostly_own", { energy });
-    const parts = [energy, " · ", t("review.at_price", { energy: formatEnergy(hass, e.gridKwh), price: "" })];
-    return html`${parts}<b style="color: ${VERDICT_COLORS[e.verdict] === VERDICT_COLORS.neutral ? "inherit" : VERDICT_COLORS[e.verdict]}">${price(e.avgPrice)}</b>${e.cheapest !== null
-        ? html` – ${t("review.cheapest", { duration: duration(e.end - e.start), price: price(e.cheapest) })}${e.cheapest > 0 &&
-          e.avgPrice / e.cheapest >= 1.5
-            ? html` (${t("review.times", { ratio: formatNumber(hass, e.avgPrice / e.cheapest, 1) })})`
-            : nothing}`
-        : nothing}`;
+  const pricing = (): Segment[] => {
+    if (e.avgPrice === null) return [t("review.mostly_own", { energy })];
+    const out: Segment[] = [
+      energy,
+      " · ",
+      t("review.at_price", { energy: formatEnergy(hass, e.gridKwh), price: "" }),
+      { t: price(e.avgPrice), b: true, c: verdictHex(e.verdict) },
+    ];
+    if (e.cheapest !== null) {
+      out.push(` – ${t("review.cheapest", { duration: duration(e.end - e.start), price: price(e.cheapest) })}`);
+      if (e.cheapest > 0 && e.avgPrice / e.cheapest >= 1.5) {
+        out.push(` (${t("review.times", { ratio: formatNumber(hass, e.avgPrice / e.cheapest, 1) })})`);
+      }
+    }
+    return out;
   };
+  const runsText = (own: Segment[]): Segment[] =>
+    e.avgPrice !== null ? [energy, " · avg ", { t: price(e.avgPrice), b: true }] : [energy, ...own];
 
   let title: string;
-  let text: unknown;
+  let text: Segment[];
   switch (e.kind) {
     case "battery":
       title = e.runs
         ? t("review.battery.runs", { name: e.name, runs: String(e.runs) })
         : t("review.battery.title", { name: e.name });
-      text = e.runs
-        ? html`${energy}${e.avgPrice !== null ? html` · avg <b>${price(e.avgPrice)}</b>` : html` · ${t("review.mostly_own_short")}`}`
-        : html`${e.socFrom !== undefined && e.socTo !== undefined && Number.isFinite(e.socFrom) && Number.isFinite(e.socTo)
-          ? `${formatNumber(hass, Math.round(e.socFrom), 0)} → ${formatPercent(hass, e.socTo)} · `
-          : nothing}${pricing()}`;
+      text = e.runs ? runsText([` · ${t("review.mostly_own_short")}`]) : [...socSpan(hass, e), ...pricing()];
       break;
     case "load":
       title = e.runs ? t("review.runs", { name: e.name, runs: String(e.runs) }) : t("review.load.title", { name: e.name });
       text = e.runs
-        ? html`${energy}${e.avgPrice !== null ? html` · avg <b>${price(e.avgPrice)}</b>` : nothing}`
+        ? runsText([])
         : e.vehicle
-          ? html`${e.socFrom !== undefined && e.socTo !== undefined && Number.isFinite(e.socFrom) && Number.isFinite(e.socTo)
-              ? `${formatNumber(hass, Math.round(e.socFrom), 0)} → ${formatPercent(hass, e.socTo)} · `
-              : nothing}${energy}${e.cost !== undefined
-              ? html` · <b>${money(e.cost)}</b>${e.kwh > 0 ? ` (${price(e.cost / e.kwh)})` : ""}`
-              : html` · ${pricing()}`}`
+          ? [
+              ...socSpan(hass, e),
+              energy,
+              ...(e.cost !== undefined
+                ? ([" · ", { t: money(e.cost), b: true }, e.kwh > 0 ? ` (${price(e.cost / e.kwh)})` : ""] as Segment[])
+                : [" · ", ...pricing()]),
+            ]
           : pricing();
       break;
     case "solar":
       title = t("review.solar.title");
-      text = t("review.solar.text", {
-        energy: formatEnergy(hass, e.kwh),
-        power: e.peakW !== undefined ? formatPower(hass, e.peakW) : "–",
-        time: e.peakAt !== undefined ? hhmm(e.peakAt) : "–",
-      });
+      text = [
+        t("review.solar.text", {
+          energy: formatEnergy(hass, e.kwh),
+          power: e.peakW !== undefined ? formatPower(hass, e.peakW) : "–",
+          time: e.peakAt !== undefined ? hhmm(e.peakAt) : "–",
+        }),
+      ];
       break;
     default:
       title = t("review.export.title");
-      text = t("review.export.text", {
-        energy: formatEnergy(hass, e.kwh),
-        price: e.avgPrice !== null ? price(e.avgPrice) : "–",
-        avg: avgPrice !== null ? price(avgPrice) : "–",
-      });
+      text = [
+        t("review.export.text", {
+          energy: formatEnergy(hass, e.kwh),
+          price: e.avgPrice !== null ? price(e.avgPrice) : "–",
+          avg: avgPrice !== null ? price(avgPrice) : "–",
+        }),
+      ];
   }
-  const border = e.verdict === "neutral" ? e.color ?? "var(--nff-track)" : VERDICT_COLORS[e.verdict];
+  return { title, text: text.filter((s) => s !== ""), border: e.verdict === "neutral" ? e.color : VERDICT_COLORS[e.verdict] };
+};
+
+const segments = (segs: Segment[]) =>
+  segs.map((s) => (typeof s === "string" ? s : s.c ? html`<b style="color: ${s.c}">${s.t}</b>` : html`<b>${s.t}</b>`));
+
+const eventCard = (ctx: ViewContext, e: ReviewEvent, unit: string, avgPrice: number | null) => {
+  const { title, text, border } = eventTexts(ctx.hass, e, unit, avgPrice);
   const open = !!e.vehicle && ctx.reviewOpen === e.start;
   const pad = Math.max((e.end - e.start) * 0.15, 15 * 60_000);
   return html`
     <div
       class="event ${e.verdict}${e.vehicle ? " expandable" : ""}"
-      style="border-left-color: ${border}"
+      style="border-left-color: ${border ?? "var(--nff-track)"}"
       aria-expanded=${e.vehicle ? (open ? "true" : "false") : nothing}
       @click=${e.vehicle ? () => ctx.toggleReviewEvent(e.start) : nothing}
     >
       <ha-icon .icon=${e.icon ?? ICONS[e.kind]} style="color: ${e.color ?? "inherit"}"></ha-icon>
       <div class="event-body">
         <div class="row"><b>${title}</b><span class="muted">${hhmm(e.start)} – ${hhmm(e.end)}</span></div>
-        <span class="event-text">${text}</span>
+        <span class="event-text">${segments(text)}</span>
         ${open && e.vehicle
           ? vehicleChart({
               start: e.start - pad,
@@ -214,9 +247,6 @@ export const renderReview = (ctx: ViewContext, state: ReviewState, setHours: (h:
   const { hass, config, model: m } = ctx;
   const r = state.data;
   const unit = m.priceUnit || "";
-  const currency = unit.split("/")[0].trim();
-  const money = (v: number) => `${formatNumber(hass, v, Math.abs(v) < 10 ? 2 : 0)}${currency ? ` ${currency}` : ""}`;
-  const price = (p: number) => `${formatNumber(hass, p, 2)} ${unit}`;
 
   const toggle = html`<div class="pills" role="group">
     ${([12, 24] as const).map(
@@ -241,62 +271,27 @@ export const renderReview = (ctx: ViewContext, state: ReviewState, setHours: (h:
     </div>`;
   }
 
-  const bought = r.bought;
-  const headline = !bought
-    ? nothing
-    : bought.kwh < 0.1
-      ? t("review.nothing_bought")
-      : bought.cost !== null
-        ? t("review.bought", { energy: formatEnergy(hass, bought.kwh), cost: money(bought.cost) })
-        : t("review.bought_energy", { energy: formatEnergy(hass, bought.kwh) });
-  const share = r.avgBuyPrice !== null && r.avgPrice !== null && r.avgPrice > 0 ? r.avgBuyPrice / r.avgPrice : null;
-  const shareColor = share === null ? "inherit" : share <= 0.9 ? VERDICT_COLORS.good : share >= 1.1 ? VERDICT_COLORS.bad : VERDICT_COLORS.ok;
-  const sold = r.sold;
-  const battery = r.lowestSoc?.name;
-  const fuse = m.fuseA;
-
+  const x = reviewTexts(hass, r, unit, m.fuseA);
   return html`
     <div class="view">
       ${head}
       ${state.error ? html`<div class="muted">${t("review.error", { message: state.error })}</div>` : nothing}
-      ${bought
+      ${x.headline !== null
         ? html`<div class="summary">
-            <b>${headline}</b>
-            <span>
-              ${r.avgBuyPrice !== null && r.avgPrice !== null
-                ? html`${t("review.avg_vs", { paid: price(r.avgBuyPrice), avg: price(r.avgPrice) })}<b style="color: ${shareColor}"
-                      >${t("review.share", { share: share !== null ? formatPercent(hass, share * 100) : "–" })}</b
-                    >. `
-                : nothing}
-              ${sold
-                ? sold.kwh >= 0.1
-                  ? t("review.sold_for", { energy: formatEnergy(hass, sold.kwh), revenue: sold.revenue !== null ? money(sold.revenue) : "–" })
-                  : t("review.nothing_sold")
-                : nothing}
-            </span>
+            <b>${x.headline}</b>
+            <span>${segments(x.sub)}</span>
           </div>`
         : nothing}
 
       <div class="review-tiles">
-        ${bought
-          ? html`<div class="stat"><span class="muted">${t("review.tile.bought")}</span><b>${formatEnergy(hass, bought.kwh)}</b>
-              <span class="muted">${bought.cost !== null ? money(bought.cost) : ""}</span></div>`
-          : nothing}
-        ${sold
-          ? html`<div class="stat"><span class="muted">${t("review.tile.sold")}</span><b>${formatEnergy(hass, sold.kwh)}</b>
-              <span class="muted">${sold.revenue !== null && sold.kwh >= 0.1 ? money(sold.revenue) : ""}</span></div>`
-          : nothing}
-        ${r.solarKwh !== null
-          ? html`<div class="stat" @click=${() => ctx.moreInfo(config.solar?.entity)}><span class="muted">${t("review.tile.solar")}</span>
-              <b>${formatEnergy(hass, r.solarKwh)}</b><span class="muted"></span></div>`
-          : nothing}
-        ${r.lowestSoc
-          ? html`<div class="stat"><span class="muted">${t("review.tile.lowest")}</span>
-              <b>${formatPercent(hass, r.lowestSoc.v)}</b><span class="muted">${hhmm(r.lowestSoc.t)}</span></div>`
-          : nothing}
+        ${x.tiles.map(
+          (tile) => html`<div class="stat" @click=${tile.solar ? () => ctx.moreInfo(config.solar?.entity) : nothing}>
+            <span class="muted">${tile.label}</span><b>${tile.value}</b><span class="muted">${tile.sub}</span>
+          </div>`,
+        )}
       </div>
 
-      ${r.prices.length || r.importBuckets.some(Number.isFinite) ? html`${chart(r, state.hours)}${legend(r, battery)}` : nothing}
+      ${r.prices.length || r.importBuckets.some(Number.isFinite) ? html`${chart(r, state.hours)}${legend(r, r.lowestSoc?.name)}` : nothing}
 
       <div class="events">
         <span class="section-title">${t("review.what_happened")}</span>
@@ -305,22 +300,70 @@ export const renderReview = (ctx: ViewContext, state: ReviewState, setHours: (h:
           : html`<span class="muted">${t("review.nothing_happened")}</span>`}
       </div>
 
-      ${r.peakImportW !== null || r.maxPhaseA !== null
+      ${x.footer
         ? html`<div class="row review-footer">
-            <span>
-              ${r.peakImportW !== null ? t("review.peak", { power: formatPower(hass, r.peakImportW) }) : nothing}
-              ${r.peakImportW !== null && r.maxPhaseA !== null ? " · " : nothing}
-              ${r.maxPhaseA !== null
-                ? t("review.phase", { amps: formatNumber(hass, r.maxPhaseA, 1), fuse: String(fuse) })
-                : nothing}
-            </span>
-            ${r.maxPhaseA !== null
-              ? html`<b style="color: ${r.maxPhaseA <= fuse ? VERDICT_COLORS.good : VERDICT_COLORS.ok}">
-                  ${r.maxPhaseA <= fuse ? t("review.fuse_ok") : t("review.fuse_over")}
-                </b>`
-              : nothing}
+            <span>${x.footer.text}</span>
+            ${x.footer.verdict ? html`<b style="color: ${x.footer.color}">${x.footer.verdict}</b>` : nothing}
           </div>`
         : nothing}
     </div>
   `;
+};
+
+/** Summary, tiles and footer of Review - shared with the display snapshot. */
+export const reviewTexts = (hass: HomeAssistant, r: Review, unit: string, fuse: number) => {
+  const currency = unit.split("/")[0].trim();
+  const money = (v: number) => `${formatNumber(hass, v, Math.abs(v) < 10 ? 2 : 0)}${currency ? ` ${currency}` : ""}`;
+  const price = (p: number) => `${formatNumber(hass, p, 2)} ${unit}`;
+  const bought = r.bought;
+  const headline = !bought
+    ? null
+    : bought.kwh < 0.1
+      ? t("review.nothing_bought")
+      : bought.cost !== null
+        ? t("review.bought", { energy: formatEnergy(hass, bought.kwh), cost: money(bought.cost) })
+        : t("review.bought_energy", { energy: formatEnergy(hass, bought.kwh) });
+  const share = r.avgBuyPrice !== null && r.avgPrice !== null && r.avgPrice > 0 ? r.avgBuyPrice / r.avgPrice : null;
+  const shareColor = share === null ? undefined : share <= 0.9 ? VERDICT_COLORS.good : share >= 1.1 ? VERDICT_COLORS.bad : VERDICT_COLORS.ok;
+  const sold = r.sold;
+  const sub: Segment[] = [];
+  if (r.avgBuyPrice !== null && r.avgPrice !== null) {
+    sub.push(t("review.avg_vs", { paid: price(r.avgBuyPrice), avg: price(r.avgPrice) }));
+    sub.push({ t: t("review.share", { share: share !== null ? formatPercent(hass, share * 100) : "–" }), b: true, c: shareColor });
+    sub.push(". ");
+  }
+  if (sold) {
+    sub.push(
+      sold.kwh >= 0.1
+        ? t("review.sold_for", { energy: formatEnergy(hass, sold.kwh), revenue: sold.revenue !== null ? money(sold.revenue) : "–" })
+        : t("review.nothing_sold"),
+    );
+  }
+
+  const tiles: { label: string; value: string; sub: string; solar?: boolean }[] = [];
+  if (bought) tiles.push({ label: t("review.tile.bought"), value: formatEnergy(hass, bought.kwh), sub: bought.cost !== null ? money(bought.cost) : "" });
+  if (sold) {
+    tiles.push({
+      label: t("review.tile.sold"),
+      value: formatEnergy(hass, sold.kwh),
+      sub: sold.revenue !== null && sold.kwh >= 0.1 ? money(sold.revenue) : "",
+    });
+  }
+  if (r.solarKwh !== null) tiles.push({ label: t("review.tile.solar"), value: formatEnergy(hass, r.solarKwh), sub: "", solar: true });
+  if (r.lowestSoc) tiles.push({ label: t("review.tile.lowest"), value: formatPercent(hass, r.lowestSoc.v), sub: hhmm(r.lowestSoc.t) });
+
+  const footer =
+    r.peakImportW !== null || r.maxPhaseA !== null
+      ? {
+          text: [
+            r.peakImportW !== null ? t("review.peak", { power: formatPower(hass, r.peakImportW) }) : "",
+            r.maxPhaseA !== null ? t("review.phase", { amps: formatNumber(hass, r.maxPhaseA, 1), fuse: String(fuse) }) : "",
+          ]
+            .filter((p) => p)
+            .join(" · "),
+          verdict: r.maxPhaseA !== null ? (r.maxPhaseA <= fuse ? t("review.fuse_ok") : t("review.fuse_over")) : "",
+          color: r.maxPhaseA !== null && r.maxPhaseA <= fuse ? VERDICT_COLORS.good : VERDICT_COLORS.ok,
+        }
+      : null;
+  return { headline, sub, tiles, footer };
 };

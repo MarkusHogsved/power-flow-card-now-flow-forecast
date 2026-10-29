@@ -65,6 +65,7 @@ Home Assistant (the renderer runs the installed card).
 | `FIXED_HEADER` | `true` | Header and tabs stay put; only the view below them scrolls |
 | `IDLE_RESET_S` | `120` | Back to the default view after this long untouched; `0` = never |
 | `JPEG_QUALITY` / `MAX_BYTES` | `75` / `64000` | Quality is lowered until the picture fits ESPHome's 64 KiB download buffer |
+| `TIME_FORMAT` | `24` | Clock times in the card's texts: `24`, `12` or `language` |
 | `PORT` | `8099` | |
 
 The idea of serving finished pictures to thin display clients, and the

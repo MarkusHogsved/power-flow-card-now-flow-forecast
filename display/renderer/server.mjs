@@ -6,7 +6,7 @@
 //
 // Endpoints:
 //   GET /frame.jpg               current picture (WIDTH x HEIGHT, already rotated; ETag, 304 when unchanged)
-//   GET /model.json              the Now view as data (the card's snapshot(); ETag, 304 when unchanged)
+//   GET /model.json              every view as data (the card's snapshotFull(); ETag, 304 when unchanged)
 //       ?tap=x,y&n=7             ... after a tap at display coordinates
 //       ?swipe=x1,y1,x2,y2&n=8   ... after a swipe
 //                                n is a sequence number: the display keeps the
@@ -37,6 +37,7 @@ const PORT = Number(env("PORT", "8099"));
 const QUALITY = Number(env("JPEG_QUALITY", "75"));
 const MAX_BYTES = Number(env("MAX_BYTES", "64000")); // ESPHome's online_image buffer is at most 64 KiB
 const LANGUAGE = env("LANGUAGE", "en");
+const TIME_FORMAT = env("TIME_FORMAT", "24"); // "24", "12" or "language" (HA's profile setting)
 const BACKGROUND = env("BACKGROUND", "#000000"); // card and page background; black gives an LCD the most contrast
 const FIXED_HEADER = env("FIXED_HEADER", "true") !== "false"; // header and tabs stay put, only the view scrolls
 const IDLE_RESET_S = Number(env("IDLE_RESET_S", "120")); // back to the default view after this long untouched; 0 = never
@@ -231,19 +232,22 @@ const pushHass = async () => {
   // The flags are cleared only after the page has the states - a failed
   // push must not leave the card with only later changes
   pageStates = await page.evaluate(
-    (delta, full, language) => {
+    (delta, full, language, timeFormat) => {
       if (full || !window.__states) window.__states = {};
       for (const [id, s] of Object.entries(delta)) {
         if (s) window.__states[id] = s;
         else delete window.__states[id];
       }
       const card = window.__card;
-      if (card) card.hass = { states: { ...window.__states }, locale: { language }, language, callWS: (msg) => window.__callWS(msg) };
+      if (card) {
+        card.hass = { states: { ...window.__states }, locale: { language, time_format: timeFormat }, language, callWS: (msg) => window.__callWS(msg) };
+      }
       return Object.keys(window.__states).length;
     },
     delta,
     full,
     LANGUAGE,
+    TIME_FORMAT,
   );
   if (full) {
     fullPush = false;
@@ -423,7 +427,12 @@ const server = http.createServer((req, res) => {
             log("state push failed:", e.message);
           }
         }
-        const snap = await page.evaluate(() => (window.__card?.snapshot ? window.__card.snapshot() : undefined));
+        // All views when the card has snapshotFull() (0.6.0), else Now only
+        const snap = await page.evaluate(async () => {
+          const card = window.__card;
+          if (card?.snapshotFull) return await card.snapshotFull();
+          return card?.snapshot ? card.snapshot() : undefined;
+        });
         if (snap === undefined) return done(501, "the installed card has no snapshot() - update it (0.5.0 or later)");
         const body = JSON.stringify(snap);
         const etag = `"${createHash("sha1").update(body).digest("hex").slice(0, 16)}"`;
