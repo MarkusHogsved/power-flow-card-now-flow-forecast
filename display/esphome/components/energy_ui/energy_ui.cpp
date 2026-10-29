@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "esp_http_client.h"
+#include "esphome/components/network/util.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 #include "freertos/FreeRTOS.h"
@@ -172,6 +173,12 @@ int EnergyUi::fetch_(std::string &body) {
 void EnergyUi::fetch_task(void *arg) {
   auto *self = static_cast<EnergyUi *>(arg);
   for (;;) {
+    // Wi-Fi starts after this component; a socket before the network stack
+    // exists asserts in lwIP (crash at boot, seen 2026-10-29)
+    if (!network::is_connected()) {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+      continue;
+    }
     std::string body;
     int status = self->fetch_(body);
     if (status == 200) {
