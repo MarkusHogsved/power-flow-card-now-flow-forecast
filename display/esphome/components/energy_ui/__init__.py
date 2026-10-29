@@ -6,6 +6,7 @@ texts and figures are the card's own; this component only lays them out.
 
 import esphome.codegen as cg
 from esphome.components import font
+from esphome.components.esp32 import request_http_client
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_UPDATE_INTERVAL, CONF_URL
 
@@ -28,6 +29,8 @@ CONFIG_SCHEMA = cv.Schema(
 
 
 async def to_code(config):
+    # ESPHome leaves unused IDF components out; the fetch task uses esp_http_client
+    request_http_client()
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
     cg.add(var.set_url(config[CONF_URL]))

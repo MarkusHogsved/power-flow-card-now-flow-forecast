@@ -134,6 +134,9 @@ lvgl:
   touchscreens: touch
   buffer_size: 100%
   bg_color: 0x000000
+  # energy_ui draws on this page (without one LVGL shows a hello-world page)
+  pages:
+    - id: energy_page
 
 font:
   - file: "gfonts://Roboto"
@@ -141,13 +144,17 @@ font:
     size: 16
     bpp: 4
     glyphsets: [GF_Latin_Core]
-    glyphs: "→←↑↓·–~…"
+    glyphs: "·–~…"
+    extras: &arrows
+      - file: "gfonts://Noto Sans Math"
+        glyphs: "←↑→↓"
   - file: "gfonts://Roboto"
     id: roboto_20
     size: 20
     bpp: 4
     glyphsets: [GF_Latin_Core]
-    glyphs: "→←↑↓·–~…"
+    glyphs: "·–~…"
+    extras: *arrows
   - file:
       type: gfonts
       family: Roboto
@@ -156,7 +163,8 @@ font:
     size: 20
     bpp: 4
     glyphsets: [GF_Latin_Core]
-    glyphs: "→←↑↓·–~…"
+    glyphs: "·–~…"
+    extras: *arrows
   - file:
       type: gfonts
       family: Roboto
@@ -165,7 +173,8 @@ font:
     size: 30
     bpp: 4
     glyphsets: [GF_Latin_Core]
-    glyphs: "→←↑↓·–~…"
+    glyphs: "·–~…"
+    extras: *arrows
   - file: "https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/fonts/materialdesignicons-webfont.ttf"
     id: mdi_32
     size: 32
