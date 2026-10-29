@@ -190,6 +190,13 @@ font:
       - "\U000F0F92"  # water-boiler
       - "\U000F0606"  # pool
       - "\U000F0241"  # flash
+      - "\U000F0084"  # battery-charging
+      - "\U000F192C"  # transmission-tower-export
+      - "\U000F05A8"  # white-balance-sunny
+      - "\U000F1904"  # home-lightning-bolt-outline (tab Now)
+      - "\U000F11DF"  # chart-sankey (tab Flow)
+      - "\U000F0127"  # chart-areaspline (tab Forecast)
+      - "\U000F02DA"  # history (tab Review)
 
 energy_ui:
   url: ${renderer_url}/model.json

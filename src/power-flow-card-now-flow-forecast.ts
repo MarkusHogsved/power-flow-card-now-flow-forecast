@@ -2,7 +2,14 @@ import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { buildReviewInput, fetchHistory, reviewEntities } from "./history";
 import { computeModel, type Model } from "./model";
 import { computeReview } from "./review";
-import { headerTexts, nowSnapshot, type NowSnapshot } from "./snapshot";
+import {
+  fullSnapshot,
+  headerTexts,
+  nowSnapshot,
+  type FullSnapshot,
+  type NowSnapshot,
+  type VehicleHistory,
+} from "./snapshot";
 import { t } from "./strings";
 import { styles } from "./styles";
 import type { CardConfig, HomeAssistant, ViewName } from "./types";
@@ -239,6 +246,38 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
   snapshot(): NowSnapshot | null {
     if (!this._config || !this.hass) return null;
     return nowSnapshot(this._context(computeModel(this.hass, this._config)));
+  }
+
+  /** History of running vehicles for snapshotFull(), fetched at most once a minute each. */
+  private _snapVehicles = new Map<string, VehicleHistory & { at: number }>();
+
+  /**
+   * All four views as plain data (display/esphome). Loads Review's history
+   * and the running vehicles' history when stale, as the views do on screen.
+   */
+  async snapshotFull(): Promise<FullSnapshot | null> {
+    if (!this._config || !this.hass) return null;
+    const hass = this.hass;
+    if (hass.callWS && !this._review.loading && Date.now() - this._reviewFetchedAt >= REVIEW_MAX_AGE_MS) {
+      await this._loadReview();
+    }
+    const model = computeModel(hass, this._config);
+    if (hass.callWS) {
+      for (const l of model.running.filter((v) => v.socEntity)) {
+        const cached = this._snapVehicles.get(l.entity);
+        if (cached && Date.now() - cached.at < VEHICLE_MAX_AGE_MS) continue;
+        const end = Date.now();
+        const start = end - VEHICLE_HOURS * 3_600_000;
+        try {
+          const ids = [l.entity, l.socEntity as string];
+          const history = await fetchHistory(hass, ids, start, end);
+          this._snapVehicles.set(l.entity, { at: end, start, end, power: history[l.entity] ?? [], soc: history[l.socEntity as string] });
+        } catch {
+          // no chart this time; the tile itself still shows
+        }
+      }
+    }
+    return fullSnapshot(this._context(model), this._review, this._snapVehicles);
   }
 
   protected override render() {

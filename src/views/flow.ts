@@ -17,7 +17,8 @@ const ribbonPath = (y0: number, y1: number, y2: number, y3: number): string => {
   return `M${LEFT_X} ${y0} C${mid} ${y0} ${mid} ${y2} ${RIGHT_X} ${y2} L${RIGHT_X} ${y3} C${mid} ${y3} ${mid} ${y1} ${LEFT_X} ${y1} Z`;
 };
 
-export const renderFlow = (ctx: ViewContext) => {
+/** Sources and uses for the Sankey, the batteries and today's totals - shared with the display snapshot. */
+export const flowData = (ctx: ViewContext) => {
   const { hass, config, model: m } = ctx;
 
   // Inside-home batteries are already part of home consumption - leave them out.
@@ -44,20 +45,39 @@ export const renderFlow = (ctx: ViewContext) => {
     })),
     { key: "export", label: t("flow.export"), value: m.gridExportW, color: COLORS.grid },
   ];
+
+  const stats = [
+    { label: t("today.solar"), value: readNumber(hass, config.solar?.today_energy) },
+    { label: t("today.import"), value: readNumber(hass, config.grid?.today_import) },
+    { label: t("today.export"), value: readNumber(hass, config.grid?.today_export) },
+  ]
+    .filter((s) => s.value !== null)
+    .map((s) => ({ label: s.label, value: formatEnergy(hass, s.value as number) }));
+
+  const batteries = m.batteries.map((b) => ({
+    name: b.name,
+    state:
+      b.powerW > 0
+        ? t("battery.charging", { power: formatPower(hass, b.powerW) })
+        : b.powerW < 0
+          ? t("battery.discharging", { power: formatPower(hass, b.powerW) })
+          : t("battery.idle"),
+    soc: b.soc,
+    socText: b.soc === null ? "–" : formatPercent(hass, b.soc),
+    color: b.soc !== null && b.soc < 30 ? COLORS.batteryLow : COLORS.battery,
+    entity: b.stateOfChargeEntity,
+  }));
+  return { sources, sinks, stats, batteries };
+};
+
+export const renderFlow = (ctx: ViewContext) => {
+  const { hass } = ctx;
+  const { sources, sinks, stats, batteries } = flowData(ctx);
   const layout = layoutSankey(sources, sinks, SANKEY_H, 6);
 
   const leftLabels = spreadLabels(layout.sources.map((b) => HEAD_H + b.y + b.height / 2), LABEL_GAP);
   const rightLabels = spreadLabels(layout.sinks.map((b) => HEAD_H + b.y + b.height / 2), LABEL_GAP);
   const svgH = Math.max(HEAD_H + SANKEY_H, ...leftLabels.map((y) => y + 8), ...rightLabels.map((y) => y + 8));
-
-  const solarToday = readNumber(hass, config.solar?.today_energy);
-  const imported = readNumber(hass, config.grid?.today_import);
-  const exported = readNumber(hass, config.grid?.today_export);
-  const stats = [
-    { label: t("today.solar"), value: solarToday },
-    { label: t("today.import"), value: imported },
-    { label: t("today.export"), value: exported },
-  ].filter((s) => s.value !== null);
 
   return html`
     <div class="view">
@@ -84,24 +104,17 @@ export const renderFlow = (ctx: ViewContext) => {
           `
         : html`<div class="muted">${t("flow.nothing")}</div>`}
 
-      ${m.batteries.length
+      ${batteries.length
         ? html`
             <div class="battery-bars">
-              ${m.batteries.map(
-                (b) => html`<div class="battery-bar" @click=${() => ctx.moreInfo(b.stateOfChargeEntity)}>
+              ${batteries.map(
+                (b) => html`<div class="battery-bar" @click=${() => ctx.moreInfo(b.entity)}>
                   <div class="row">
-                    <span>
-                      <b>${b.name}</b> ·
-                      ${b.powerW > 0
-                        ? t("battery.charging", { power: formatPower(hass, b.powerW) })
-                        : b.powerW < 0
-                          ? t("battery.discharging", { power: formatPower(hass, b.powerW) })
-                          : t("battery.idle")}
-                    </span>
-                    <b>${b.soc === null ? "–" : formatPercent(hass, b.soc)}</b>
+                    <span><b>${b.name}</b> · ${b.state}</span>
+                    <b>${b.socText}</b>
                   </div>
                   <div class="track">
-                    <span style="width: ${b.soc ?? 0}%; background: ${b.soc !== null && b.soc < 30 ? COLORS.batteryLow : COLORS.battery}"></span>
+                    <span style="width: ${b.soc ?? 0}%; background: ${b.color}"></span>
                   </div>
                 </div>`,
               )}
@@ -111,9 +124,7 @@ export const renderFlow = (ctx: ViewContext) => {
 
       ${stats.length
         ? html`<div class="stats">
-            ${stats.map(
-              (s) => html`<div class="stat"><span class="muted">${s.label}</span><b>${formatEnergy(hass, s.value as number)}</b></div>`,
-            )}
+            ${stats.map((s) => html`<div class="stat"><span class="muted">${s.label}</span><b>${s.value}</b></div>`)}
           </div>`
         : nothing}
     </div>
