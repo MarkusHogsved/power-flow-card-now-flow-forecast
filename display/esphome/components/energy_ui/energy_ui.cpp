@@ -18,7 +18,7 @@ static const char *const TAG = "energy_ui";
 // Palette, as the card on a black background
 static const uint32_t TEXT = 0xF2F2F2;
 static const uint32_t MUTED = 0xA8A8A8;
-static const uint32_t TRACK = 0x4A5058;
+static const uint32_t TRACK = 0x2C3137;
 static const uint32_t NODE_BORDER = 0x3A3F46;
 static const uint32_t TILE_BG = 0x111418;
 static const uint32_t WARN = 0xE57F84;

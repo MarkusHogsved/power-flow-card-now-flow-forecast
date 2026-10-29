@@ -72,9 +72,11 @@ wifi:
   password: !secret wifi_password
   power_save_mode: none
 
+# NTP, not Home Assistant: the display works without being added to HA
 time:
-  - platform: homeassistant
+  - platform: sntp
     id: ha_time
+    timezone: Europe/Stockholm
 
 # ---------------------------------------------------------------- Hardware
 
