@@ -6,6 +6,7 @@
 //
 // Endpoints:
 //   GET /frame.jpg               current picture (WIDTH x HEIGHT, already rotated; ETag, 304 when unchanged)
+//   GET /model.json              the Now view as data (the card's snapshot(); ETag, 304 when unchanged)
 //       ?tap=x,y&n=7             ... after a tap at display coordinates
 //       ?swipe=x1,y1,x2,y2&n=8   ... after a swipe
 //                                n is a sequence number: the display keeps the
@@ -410,6 +411,34 @@ const server = http.createServer((req, res) => {
             connection: "close",
           });
           res.end(jpeg);
+        }
+      } else if (url.pathname === "/model.json") {
+        // The Now view as data, for a display that draws its own interface
+        // (display/esphome/waveshare-esp32-p4-wifi6-touch-lcd-7b.yaml). Same
+        // ETag / 304 as the picture, so an unchanged model costs nothing.
+        if (dirty || fullPush || Date.now() - lastFullPush > FULL_PUSH_MS) {
+          try {
+            await pushHass();
+          } catch (e) {
+            log("state push failed:", e.message);
+          }
+        }
+        const snap = await page.evaluate(() => (window.__card?.snapshot ? window.__card.snapshot() : undefined));
+        if (snap === undefined) return done(501, "the installed card has no snapshot() - update it (0.5.0 or later)");
+        const body = JSON.stringify(snap);
+        const etag = `"${createHash("sha1").update(body).digest("hex").slice(0, 16)}"`;
+        if (req.headers["if-none-match"] === etag) {
+          res.writeHead(304, { etag, "cache-control": "no-cache", connection: "close" });
+          res.end();
+        } else {
+          res.writeHead(200, {
+            etag,
+            "content-type": "application/json",
+            "content-length": Buffer.byteLength(body),
+            "cache-control": "no-cache",
+            connection: "close",
+          });
+          res.end(body);
         }
       } else if (url.pathname === "/tap") {
         lastTouch = Date.now();

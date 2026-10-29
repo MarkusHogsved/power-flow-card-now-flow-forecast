@@ -1,8 +1,8 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import { formatNumber, formatPower, formatUntil } from "./hass";
 import { buildReviewInput, fetchHistory, reviewEntities } from "./history";
 import { computeModel, type Model } from "./model";
 import { computeReview } from "./review";
+import { headerTexts, nowSnapshot, type NowSnapshot } from "./snapshot";
 import { t } from "./strings";
 import { styles } from "./styles";
 import type { CardConfig, HomeAssistant, ViewName } from "./types";
@@ -180,28 +180,19 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
   };
 
   private _header(model: Model) {
-    const hass = this.hass as HomeAssistant;
-    const detail: Record<string, string> = {
-      importing: t("status.detail.importing", { power: formatPower(hass, model.gridImportW) }),
-      exporting: t("status.detail.exporting", { power: formatPower(hass, model.gridExportW) }),
-      solar: t("status.detail.solar", { power: formatPower(hass, model.solarW) }),
-      battery: t("status.detail.battery"),
-      idle: "",
-    };
+    const h = headerTexts(this.hass as HomeAssistant, this._config as CardConfig, model, new Date());
     return html`
       <div class="header">
         <div>
-          <div class="title">${t(`status.${model.status}`)}</div>
-          <div class="subtitle">
-            ${formatPower(hass, model.homeW)}${detail[model.status] ? ` · ${detail[model.status]}` : ""}
-          </div>
-          ${model.status === "importing" ? this._importReason() : nothing}
+          <div class="title">${h.title}</div>
+          <div class="subtitle">${h.subtitle}</div>
+          ${h.reason ? this._importReason(h.reason) : nothing}
         </div>
-        ${model.price !== null
+        ${h.price
           ? html`<div class="price" @click=${() => this._moreInfo(this._config?.grid?.price)}>
-              ${this._config?.grid?.price_name ?? t("price")}
-              <b>${formatNumber(hass, model.price, 2)}</b>
-              <span>${model.priceUnit}</span>
+              ${h.price.name}
+              <b>${h.price.value}</b>
+              <span>${h.price.unit}</span>
             </div>`
           : nothing}
       </div>
@@ -209,23 +200,12 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
   }
 
   /** "Why we buy, and until when" from grid.import_reason, with the detail behind an info button. */
-  private _importReason() {
-    const hass = this.hass as HomeAssistant;
+  private _importReason(reason: { text: string; detail: string }) {
     const entityId = this._config?.grid?.import_reason;
-    const entity = entityId ? hass.states[entityId] : undefined;
-    if (!entity || !entity.state || ["unknown", "unavailable"].includes(entity.state)) return nothing;
-    const detail = typeof entity.attributes.detail === "string" ? entity.attributes.detail : "";
-    const untilRaw = entity.attributes.until;
-    const until = typeof untilRaw === "string" && untilRaw ? new Date(untilRaw) : null;
-    let untilText = "";
-    if (until && !Number.isNaN(until.getTime())) {
-      const u = formatUntil(hass, until, new Date());
-      untilText = t(u.tomorrow ? "reason.until_tomorrow" : "reason.until", { time: u.time });
-    }
     return html`
       <div class="reason">
-        <span @click=${() => this._moreInfo(entityId)}>${entity.state}${untilText ? ` · ${untilText}` : ""}</span>
-        ${detail
+        <span @click=${() => this._moreInfo(entityId)}>${reason.text}</span>
+        ${reason.detail
           ? html`<button
               type="button"
               class="reason-info"
@@ -237,16 +217,14 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
             </button>`
           : nothing}
       </div>
-      ${detail && this._reasonOpen ? html`<div class="reason-detail">${detail}</div>` : nothing}
+      ${reason.detail && this._reasonOpen ? html`<div class="reason-detail">${reason.detail}</div>` : nothing}
     `;
   }
 
-  protected override render() {
-    if (!this._config || !this.hass) return nothing;
-    const model = computeModel(this.hass, this._config);
-    const ctx: ViewContext = {
-      hass: this.hass,
-      config: this._config,
+  private _context(model: Model): ViewContext {
+    return {
+      hass: this.hass as HomeAssistant,
+      config: this._config as CardConfig,
       model,
       now: new Date(),
       moreInfo: this._moreInfo,
@@ -255,6 +233,18 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
       reviewOpen: this._reviewOpen,
       toggleReviewEvent: (start: number) => (this._reviewOpen = this._reviewOpen === start ? undefined : start),
     };
+  }
+
+  /** The Now view as plain data, for displays that draw their own interface (display/esphome). */
+  snapshot(): NowSnapshot | null {
+    if (!this._config || !this.hass) return null;
+    return nowSnapshot(this._context(computeModel(this.hass, this._config)));
+  }
+
+  protected override render() {
+    if (!this._config || !this.hass) return nothing;
+    const model = computeModel(this.hass, this._config);
+    const ctx = this._context(model);
     return html`
       <ha-card>
         ${this._header(model)}

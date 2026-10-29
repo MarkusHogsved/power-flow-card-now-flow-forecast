@@ -56,9 +56,9 @@ const cell = (ctx: ViewContext, b: BatteryState) => html`
 `;
 
 /** Vehicle lines on a load tile: level → limit, energy left and finish time, cost at the spot price. */
-const vehicleLines = (ctx: ViewContext, l: LoadState) => {
+export const vehicleTexts = (ctx: ViewContext, l: LoadState): { level: string; left: string; cost: string } | null => {
   const { hass, model: m } = ctx;
-  if (l.soc === undefined || l.soc === null) return nothing;
+  if (l.soc === undefined || l.soc === null) return null;
   const atLimit = l.socLimit != null && l.soc >= l.socLimit - 0.5;
   const level =
     l.socLimit == null
@@ -87,12 +87,58 @@ const vehicleLines = (ctx: ViewContext, l: LoadState) => {
       left = t("load.left", { energy });
     }
   }
+  return { level, left, cost };
+};
+
+const vehicleLines = (ctx: ViewContext, l: LoadState) => {
+  const v = vehicleTexts(ctx, l);
+  if (!v) return nothing;
   return html`
-    <span class="load-line">${level}</span>
-    ${left ? html`<span class="load-line muted">${left}</span>` : nothing}
-    ${cost ? html`<span class="load-line muted">${cost}</span>` : nothing}
+    <span class="load-line">${v.level}</span>
+    ${v.left ? html`<span class="load-line muted">${v.left}</span>` : nothing}
+    ${v.cost ? html`<span class="load-line muted">${v.cost}</span>` : nothing}
   `;
 };
+
+/** Figures under the nodes and in the bank header, shared with the display snapshot. */
+export const nowFigures = (ctx: ViewContext) => {
+  const { hass, config, model: m } = ctx;
+  // Bank header: all batteries, inside-home ones too - discharge and charge
+  // separately, since a net figure hides one battery charging another.
+  const bankOut = m.batteries.reduce((s, b) => s + Math.max(-b.powerW, 0), 0);
+  const bankIn = m.batteries.reduce((s, b) => s + Math.max(b.powerW, 0), 0);
+  const solarToday = readNumber(hass, config.solar?.today_energy);
+  const solarForecast = readNumber(hass, config.solar?.forecast_today);
+  const gridToday = readNumber(hass, config.grid?.today_import);
+  const gridCost = readNumber(hass, config.grid?.today_cost);
+  // Expected further purchases until midnight, from LoadCast (needs its forecast)
+  const demand = readLoadCast(hass, config.loadcast?.forecast, ctx.now);
+  const midnight = new Date(ctx.now);
+  midnight.setHours(24, 0, 0, 0);
+  const gridExpected = demand.length
+    ? expectedImportKwh(demand, readSolarP10ByHour(hass, config.solar?.forecast_entities), m.batteries, ctx.now, midnight)
+    : null;
+  const costUnit = String(hass.states[config.grid?.today_cost ?? ""]?.attributes?.unit_of_measurement ?? "");
+  return {
+    bankOut,
+    bankIn,
+    bankText:
+      `${bankOut > 0 ? `↑ ${formatPower(hass, bankOut)}` : ""}${bankOut > 0 && bankIn > 0 ? "  " : ""}` +
+      `${bankIn > 0 ? `↓ ${formatPower(hass, bankIn)}` : ""}${bankOut + bankIn === 0 ? formatPower(hass, 0) : ""}`,
+    solarToday: solarToday !== null ? t("solar.today", { energy: formatEnergy(hass, solarToday) }) : null,
+    solarForecast: solarForecast !== null ? t("solar.forecast_today", { energy: formatEnergy(hass, solarForecast) }) : null,
+    gridToday: gridToday !== null ? t("grid.today", { energy: formatEnergy(hass, gridToday) }) : null,
+    gridCost:
+      gridCost !== null ? `${formatNumber(hass, gridCost, gridCost < 10 ? 2 : 0)}${costUnit ? ` ${costUnit}` : ""}` : null,
+    gridExpected: gridExpected !== null ? t("grid.expected", { energy: formatEnergy(hass, gridExpected) }) : null,
+  };
+};
+
+/** Phase bar fill (0..1) and whether it is close to the fuse. */
+export const phaseBar = (amps: number | null, fuseA: number): { frac: number; warn: boolean } => ({
+  frac: Math.min(Math.abs(amps ?? 0) / fuseA, 1),
+  warn: Math.abs(amps ?? 0) > fuseA * 0.88,
+});
 
 const loadTile = (ctx: ViewContext, l: LoadState) => html`
   <div
@@ -114,22 +160,7 @@ export const renderNow = (ctx: ViewContext) => {
   const hasSolar = !!config.solar;
   const hasGrid = !!config.grid;
   const hasBatteries = m.batteries.length > 0;
-  // Bank header: all batteries, inside-home ones too - discharge and charge
-  // separately, since a net figure hides one battery charging another.
-  const bankOut = m.batteries.reduce((s, b) => s + Math.max(-b.powerW, 0), 0);
-  const bankIn = m.batteries.reduce((s, b) => s + Math.max(b.powerW, 0), 0);
-  const solarToday = readNumber(hass, config.solar?.today_energy);
-  const solarForecast = readNumber(hass, config.solar?.forecast_today);
-  const gridToday = readNumber(hass, config.grid?.today_import);
-  const gridCost = readNumber(hass, config.grid?.today_cost);
-  // Expected further purchases until midnight, from LoadCast (needs its forecast)
-  const demand = readLoadCast(hass, config.loadcast?.forecast, ctx.now);
-  const midnight = new Date(ctx.now);
-  midnight.setHours(24, 0, 0, 0);
-  const gridExpected = demand.length
-    ? expectedImportKwh(demand, readSolarP10ByHour(hass, config.solar?.forecast_entities), m.batteries, ctx.now, midnight)
-    : null;
-  const costUnit = String(hass.states[config.grid?.today_cost ?? ""]?.attributes?.unit_of_measurement ?? "");
+  const fig = nowFigures(ctx);
 
   return html`
     <div class="view">
@@ -158,12 +189,8 @@ export const renderNow = (ctx: ViewContext) => {
                 <span>${formatPower(hass, m.solarW)}</span>
               </div>
               <div class="node-label" style="left: ${pct(250, BOX_W)}; top: ${pct(14, BOX_H)}">
-                ${t("node.solar")}${solarToday !== null
-                  ? html`<br />${t("solar.today", { energy: formatEnergy(hass, solarToday) })}`
-                  : nothing}${solarForecast !== null
-                  ? html`<br /><span @click=${() => ctx.moreInfo(config.solar?.forecast_today)}
-                      >${t("solar.forecast_today", { energy: formatEnergy(hass, solarForecast) })}</span
-                    >`
+                ${t("node.solar")}${fig.solarToday !== null ? html`<br />${fig.solarToday}` : nothing}${fig.solarForecast !== null
+                  ? html`<br /><span @click=${() => ctx.moreInfo(config.solar?.forecast_today)}>${fig.solarForecast}</span>`
                   : nothing}
               </div>
             `
@@ -179,18 +206,12 @@ export const renderNow = (ctx: ViewContext) => {
                 <span>${m.gridExportW > 0 ? "← " : ""}${formatPower(hass, m.gridImportW || m.gridExportW)}</span>
               </div>
               <div class="node-label grid-label" style="left: 0; top: ${pct(216, BOX_H)}">
-                ${t("node.grid")}${gridToday !== null || gridCost !== null ? html`<br />` : nothing}${gridToday !== null
-                  ? html`<span @click=${() => ctx.moreInfo(config.grid?.today_import)}
-                      >${t("grid.today", { energy: formatEnergy(hass, gridToday) })}</span
-                    >`
-                  : nothing}${gridToday !== null && gridCost !== null ? " · " : nothing}${gridCost !== null
-                  ? html`<span @click=${() => ctx.moreInfo(config.grid?.today_cost)}
-                      >${`${formatNumber(hass, gridCost, gridCost < 10 ? 2 : 0)}${costUnit ? ` ${costUnit}` : ""}`}</span
-                    >`
-                  : nothing}${gridExpected !== null
-                  ? html`<br /><span @click=${() => ctx.moreInfo(config.loadcast?.forecast)}
-                      >${t("grid.expected", { energy: formatEnergy(hass, gridExpected) })}</span
-                    >`
+                ${t("node.grid")}${fig.gridToday !== null || fig.gridCost !== null ? html`<br />` : nothing}${fig.gridToday !== null
+                  ? html`<span @click=${() => ctx.moreInfo(config.grid?.today_import)}>${fig.gridToday}</span>`
+                  : nothing}${fig.gridToday !== null && fig.gridCost !== null ? " · " : nothing}${fig.gridCost !== null
+                  ? html`<span @click=${() => ctx.moreInfo(config.grid?.today_cost)}>${fig.gridCost}</span>`
+                  : nothing}${fig.gridExpected !== null
+                  ? html`<br /><span @click=${() => ctx.moreInfo(config.loadcast?.forecast)}>${fig.gridExpected}</span>`
                   : nothing}
               </div>
             `
@@ -211,11 +232,7 @@ export const renderNow = (ctx: ViewContext) => {
               >
                 <div class="row">
                   <span class="muted" style="font-size: 12px; font-weight: 600">${t("node.batteries")}</span>
-                  <b style="font-size: 13px; color: ${COLORS.battery}">
-                    ${bankOut > 0 ? `↑ ${formatPower(hass, bankOut)}` : ""}${bankOut > 0 && bankIn > 0 ? "  " : ""}${bankIn > 0
-                      ? `↓ ${formatPower(hass, bankIn)}`
-                      : ""}${bankOut + bankIn === 0 ? formatPower(hass, 0) : ""}
-                  </b>
+                  <b style="font-size: 13px; color: ${COLORS.battery}">${fig.bankText}</b>
                 </div>
                 <div class="bank-cells">${m.batteries.map((b) => cell(ctx, b))}</div>
               </div>
@@ -254,7 +271,7 @@ export const renderNow = (ctx: ViewContext) => {
                   ${p.name}
                   <span class="track phase-track">
                     <span
-                      style="width: ${Math.min(Math.abs(p.amps ?? 0) / m.fuseA, 1) * 100}%; background: ${Math.abs(p.amps ?? 0) > m.fuseA * 0.88 ? "#E57F84" : COLORS.grid}"
+                      style="width: ${phaseBar(p.amps, m.fuseA).frac * 100}%; background: ${phaseBar(p.amps, m.fuseA).warn ? "#E57F84" : COLORS.grid}"
                     ></span>
                   </span>
                   ${p.amps === null ? "–" : `${formatNumber(hass, Math.abs(p.amps), 1)} A`}
