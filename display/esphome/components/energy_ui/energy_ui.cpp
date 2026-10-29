@@ -211,7 +211,7 @@ void EnergyUi::build_() {
   this->subtitle_ = this->label_(this->screen_, this->medium_, MUTED, 24, 50);
   this->reason_ = this->label_(this->screen_, this->small_, SOLAR, 24, 76);
   lv_obj_set_width(this->reason_, 560);
-  lv_label_set_long_mode(this->reason_, LV_LABEL_LONG_DOT);
+  lv_label_set_long_mode(this->reason_, LV_LABEL_LONG_MODE_DOTS);
   this->offline_ = this->label_(this->screen_, this->small_, WARN, 620, 14);
   this->clock_ = this->label_(this->screen_, this->medium_, MUTED, 620, 40);
 

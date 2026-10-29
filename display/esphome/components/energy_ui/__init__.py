@@ -5,8 +5,9 @@ texts and figures are the card's own; this component only lays them out.
 """
 
 import esphome.codegen as cg
-from esphome.components import font
 from esphome.components.esp32 import request_http_client
+from esphome.components.lvgl.defines import TYPE_FLEX, add_lv_use
+from esphome.components.lvgl.lv_validation import lv_font
 import esphome.config_validation as cv
 from esphome.const import CONF_ID, CONF_UPDATE_INTERVAL, CONF_URL
 
@@ -18,14 +19,26 @@ EnergyUi = energy_ui_ns.class_("EnergyUi", cg.Component)
 
 FONTS = ["font_small", "font_medium", "font_bold", "font_large", "font_icons"]
 
-CONFIG_SCHEMA = cv.Schema(
+
+def _lv_parts(config):
+    # ESPHome compiles only the LVGL widgets the yaml uses; this component
+    # creates its own. Added while validating, before LVGL generates its code.
+    add_lv_use("label", "line", "bar", TYPE_FLEX)
+    return config
+
+
+CONFIG_SCHEMA = cv.All(
+    cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(EnergyUi),
         cv.Required(CONF_URL): cv.url,
         cv.Optional(CONF_UPDATE_INTERVAL, default="3s"): cv.positive_time_period_milliseconds,
-        **{cv.Required(key): cv.use_id(font.Font) for key in FONTS},
+        # lv_font: registers the fonts with LVGL (get_lv_font())
+        **{cv.Required(key): lv_font for key in FONTS},
     }
-).extend(cv.COMPONENT_SCHEMA)
+    ).extend(cv.COMPONENT_SCHEMA),
+    _lv_parts,
+)
 
 
 async def to_code(config):
