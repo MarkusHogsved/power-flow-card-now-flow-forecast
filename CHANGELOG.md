@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.0
+
+- New `snapshotFull()`: every view as plain data (Now, Flow with its Sankey
+  layout, Forecast with the hourly chart and *Will the battery last?*, Review
+  with its chart, legend and events) plus the last 12 h of running vehicles.
+  Each view and its snapshot share one function, so the texts cannot drift
+  apart. The renderer's `/model.json` serves it; new renderer setting
+  `TIME_FORMAT` (default `24`).
+- Native P4 display: a tab rail on the left edge and all four views, drawn
+  with LVGL (charts on a canvas in PSRAM). Tapping a running vehicle's tile
+  opens its power and battery level over the last 12 h. Back to Now after
+  two minutes untouched. The clock comes from NTP.
+
 ## 0.5.0
 
 - New `snapshot()` on the card: the Now view as plain data with the card's
