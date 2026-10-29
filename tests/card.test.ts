@@ -371,6 +371,11 @@ describe("card", () => {
       };
     }) as HomeAssistant["callWS"];
     card.hass = hass;
+    // The first snapshot answers at once; the history arrives in the background
+    const first = (await card.snapshotFull())!;
+    expect(first.vehicles).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 0));
+    await card.updateComplete;
     const snap = (await card.snapshotFull())!;
     expect(snap.v).toBe(2);
     expect(snap.tabs).toEqual(["Now", "Flow", "Forecast", "Review"]);
@@ -396,10 +401,30 @@ describe("card", () => {
     expect(snap.vehicles[0].soc[143]).toBe(73);
     // Plain data
     expect(JSON.parse(JSON.stringify(snap))).toEqual(snap);
-    // A second snapshot within the cache times fetches nothing
+    // A further snapshot within the cache times fetches nothing
     const n = calls.length;
     await card.snapshotFull();
     expect(calls.length).toBe(n);
+  });
+
+  test("snapshotFull never waits for history: a hanging recorder still gives live figures", async () => {
+    const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc" };
+    const states = eventStatesWithEv();
+    const card = await mount({ ...houseConfig, large_loads: [ev] }, states);
+    const hass = makeHass(states);
+    let calls = 0;
+    hass.callWS = (() => {
+      calls++;
+      return new Promise(() => undefined); // never answers
+    }) as HomeAssistant["callWS"];
+    card.hass = hass;
+    const snap = await Promise.race([card.snapshotFull(), new Promise((r) => setTimeout(() => r("timeout"), 100))]);
+    expect(snap).not.toBe("timeout");
+    expect((snap as { home: { text: string } }).home.text).toBe("1.95 kW");
+    // and it does not ask again on every poll
+    const n = calls;
+    await card.snapshotFull();
+    expect(calls).toBe(n);
   });
 
   test("all phases share one row, under the fuse label", async () => {

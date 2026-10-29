@@ -250,31 +250,34 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
 
   /** History of running vehicles for snapshotFull(), fetched at most once a minute each. */
   private _snapVehicles = new Map<string, VehicleHistory & { at: number }>();
+  /** When each vehicle's history was last asked for (a failed request waits a minute too). */
+  private _snapAsked = new Map<string, number>();
 
   /**
-   * All four views as plain data (display/esphome). Loads Review's history
-   * and the running vehicles' history when stale, as the views do on screen.
+   * All four views as plain data (display/esphome). Review's history and the
+   * running vehicles' history are refreshed in the background when stale -
+   * never awaited, so a slow recorder cannot hold up the live figures (the
+   * display gives up after 5 s); they show from the next snapshot on.
    */
   async snapshotFull(): Promise<FullSnapshot | null> {
     if (!this._config || !this.hass) return null;
     const hass = this.hass;
     if (hass.callWS && !this._review.loading && Date.now() - this._reviewFetchedAt >= REVIEW_MAX_AGE_MS) {
-      await this._loadReview();
+      void this._loadReview();
     }
     const model = computeModel(hass, this._config);
     if (hass.callWS) {
       for (const l of model.running.filter((v) => v.socEntity)) {
-        const cached = this._snapVehicles.get(l.entity);
-        if (cached && Date.now() - cached.at < VEHICLE_MAX_AGE_MS) continue;
+        const asked = this._snapAsked.get(l.entity) ?? 0;
+        if (Date.now() - asked < VEHICLE_MAX_AGE_MS) continue;
         const end = Date.now();
+        this._snapAsked.set(l.entity, end);
         const start = end - VEHICLE_HOURS * 3_600_000;
-        try {
-          const ids = [l.entity, l.socEntity as string];
-          const history = await fetchHistory(hass, ids, start, end);
-          this._snapVehicles.set(l.entity, { at: end, start, end, power: history[l.entity] ?? [], soc: history[l.socEntity as string] });
-        } catch {
-          // no chart this time; the tile itself still shows
-        }
+        const soc = l.socEntity as string;
+        fetchHistory(hass, [l.entity, soc], start, end).then(
+          (history) => this._snapVehicles.set(l.entity, { at: end, start, end, power: history[l.entity] ?? [], soc: history[soc] }),
+          () => undefined, // no chart this time; the tile itself still shows
+        );
       }
     }
     return fullSnapshot(this._context(model), this._review, this._snapVehicles);
