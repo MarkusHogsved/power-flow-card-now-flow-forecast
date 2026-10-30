@@ -68,6 +68,9 @@ logger:
     component: ERROR
 
 api:
+  # Works without Home Assistant: without this ESPHome restarts the display
+  # every 15 min when no API client (HA) is connected
+  reboot_timeout: 0s
 
 ota:
   - platform: esphome
