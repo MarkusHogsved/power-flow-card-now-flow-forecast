@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+- Node details, home: LoadCast's forecast as a line against the outcome, each
+  past hour as forecast when it began (the sensor itself only holds the hours
+  from now on, so its attribute history is fetched, at most every 30 min),
+  plus "Forecast, 24 h" next to "Used, 24 h" when the whole window is covered.
+- The P4 price box toggles back to the view you came from.
+
 ## 0.8.0
 
 - Snapshot: `details` - the last 24 h of solar, grid, home and each battery

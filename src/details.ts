@@ -4,7 +4,7 @@
 // history and series as Review.
 import { readLoadCast } from "./forecast";
 import { formatEnergy, formatPercent, formatPower, readNumber } from "./hass";
-import { buildReviewInput, powerSeries, reviewEntities } from "./history";
+import { buildReviewInput, powerSeries, reviewEntities, type LoadCastIssue } from "./history";
 import { COLORS } from "./model";
 import { average, extreme, integrate, valueAt, type Series } from "./review";
 import { t } from "./strings";
@@ -72,11 +72,13 @@ export interface DetailHistory {
   start: number;
   end: number;
   history: Record<string, Series>;
+  /** LoadCast forecasts published over the window (fetched separately, may be missing). */
+  loadcast?: LoadCastIssue[];
 }
 
 /** One chart per node: id, title, colours, 96 buckets in W, optional SOC and forecast lines, figures. */
 export const nodeDetails = (hass: HomeAssistant, config: CardConfig, h: DetailHistory, now: Date) => {
-  const { start, end, history } = h;
+  const { start, end, history, loadcast } = h;
   const step = (end - start) / BUCKETS;
   const input = buildReviewInput(hass, config, history, start, end);
   const tk = ticks(start, end);
@@ -166,17 +168,33 @@ export const nodeDetails = (hass: HomeAssistant, config: CardConfig, h: DetailHi
           return b > a ? sum + (hr.kwh * (b - a)) / 3_600_000 : sum;
         }, 0)
       : null;
+    // LoadCast per hour as it stood when the hour began (the sensor itself only
+    // holds the hours from now on); the hour now running from the live sensor
+    const issues = [...(loadcast ?? []), { at: now.getTime(), hours: lc.map((x) => ({ start: x.start.getTime(), kwh: x.kwh })) }];
+    const forecastAt = (mid: number): number | null => {
+      let best: number | null = null;
+      for (const f of issues) {
+        const hr = f.hours.find((x) => x.start <= mid && mid < x.start + 3_600_000);
+        if (!hr) continue;
+        if (f.at <= hr.start || best === null) best = hr.kwh;
+        if (f.at > hr.start) break;
+      }
+      return best === null ? null : Math.round(best * 1000);
+    };
+    const forecast = Array.from({ length: BUCKETS }, (_, i) => forecastAt(start + (i + 0.5) * step));
+    const predicted = forecast.every((v) => v !== null) ? forecast.reduce<number>((sum, v) => sum + (v ?? 0), 0) * (step / 3_600_000) / 1000 : null;
     out.push({
       id: "home",
       title: t("detail.home"),
       color: 0xf2f2f2,
       series: buckets(s, start, step),
-      forecast: null,
+      forecast: forecast.some((v) => v !== null) ? forecast : null,
       soc: null,
       ticks: tk,
-      legend: { series: t("detail.power"), forecast: "", soc: "" },
+      legend: { series: t("detail.power"), forecast: t("detail.forecast"), soc: "" },
       stats: stats([
         used !== null ? { label: t("detail.used_24h"), value: formatEnergy(hass, used) } : null,
+        predicted !== null ? { label: t("detail.forecast_24h"), value: formatEnergy(hass, predicted) } : null,
         top ? { label: t("detail.peak"), value: `${formatPower(hass, top.v)} ${hhmm(top.t)}` } : null,
         rest !== null ? { label: t("detail.rest_of_day"), value: `~${formatEnergy(hass, rest)}` } : null,
       ]),

@@ -24,6 +24,7 @@ const en = {
   "detail.peak_import": "Highest import",
   "detail.peak_export": "Highest export",
   "detail.used_24h": "Used, 24 h",
+  "detail.forecast_24h": "Forecast, 24 h",
   "detail.rest_of_day": "Expected rest of day",
   "detail.charged_24h": "Charged, 24 h",
   "detail.discharged_24h": "Discharged, 24 h",
