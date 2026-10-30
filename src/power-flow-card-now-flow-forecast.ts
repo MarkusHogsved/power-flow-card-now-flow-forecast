@@ -1,6 +1,6 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { DETAIL_HOURS, detailEntities, type DetailHistory } from "./details";
-import { buildReviewInput, fetchHistory, reviewEntities } from "./history";
+import { buildReviewInput, fetchHistory, fetchLoadCastHistory, reviewEntities, type LoadCastIssue } from "./history";
 import { computeModel, type Model } from "./model";
 import { computeReview } from "./review";
 import {
@@ -23,7 +23,7 @@ import { renderReview, type ReviewHours, type ReviewState } from "./views/review
 import { VEHICLE_HOURS, type VehicleChartState } from "./views/vehicle";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.8.0";
+export const VERSION = "0.9.0";
 const VIEWS: ViewName[] = ["now", "flow", "forecast", "review", "price"];
 
 /** The views this card offers: `views` from the config (valid ones, in its order), else all. */
@@ -35,6 +35,7 @@ const viewsOf = (config: CardConfig): ViewName[] => {
 const REVIEW_MAX_AGE_MS = 5 * 60_000;
 /** An unfolded vehicle tile refreshes its history at most this often. */
 const VEHICLE_MAX_AGE_MS = 60_000;
+const LOADCAST_MAX_AGE_MS = 30 * 60_000;
 
 const storageKey = (config: CardConfig, what = "view"): string => `${CARD_TYPE}:${what}:${config.view_key ?? "default"}`;
 
@@ -270,6 +271,9 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
   /** The last 24 h of every node for snapshotFull() (tap a node on the display), at most every 5 min. */
   private _snapDetails: DetailHistory | null = null;
   private _snapDetailsAsked = 0;
+  /** LoadCast forecasts of the last 24 h (large attribute), at most every 30 min. */
+  private _snapLoadCast: LoadCastIssue[] | undefined;
+  private _snapLoadCastAsked = 0;
   /** When each vehicle's history was last asked for (a failed request waits a minute too). */
   private _snapAsked = new Map<string, number>();
 
@@ -309,7 +313,17 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
         () => undefined, // the nodes then open without a chart until the next try
       );
     }
-    return fullSnapshot(this._context(model), this._review, this._snapVehicles, this._snapDetails);
+    const lcId = this._config.loadcast?.forecast;
+    if (hass.callWS && lcId && Date.now() - this._snapLoadCastAsked >= LOADCAST_MAX_AGE_MS) {
+      const end = Date.now();
+      this._snapLoadCastAsked = end;
+      fetchLoadCastHistory(hass, lcId, end - DETAIL_HOURS * 3_600_000, end).then(
+        (issues) => (this._snapLoadCast = issues),
+        () => undefined, // home then shows the forecast from the current hour only
+      );
+    }
+    const details = this._snapDetails ? { ...this._snapDetails, loadcast: this._snapLoadCast } : null;
+    return fullSnapshot(this._context(model), this._review, this._snapVehicles, details);
   }
 
   protected override render() {
