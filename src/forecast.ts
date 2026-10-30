@@ -40,6 +40,20 @@ export const readLoadCast = (
     .slice(0, hours);
 };
 
+/** LoadCast's `past` (0.1.7+): each recent hour as forecast when it began, oldest first. */
+export const readLoadCastPast = (hass: HomeAssistant, entityId: string | undefined): ForecastHour[] => {
+  const raw = entityId ? hass.states[entityId]?.attributes?.past : undefined;
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawLoadCastHour[])
+    .map((h) => ({
+      start: new Date(h.period_start ?? ""),
+      kwh: Number(h.kwh),
+      p10: Number(h.kwh_p10 ?? h.kwh),
+      p90: Number(h.kwh_p90 ?? h.kwh),
+    }))
+    .filter((h) => !Number.isNaN(h.start.getTime()) && Number.isFinite(h.kwh));
+};
+
 interface RawSolcastPeriod {
   period_start?: string;
   pv_estimate10?: number;

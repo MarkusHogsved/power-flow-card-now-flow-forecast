@@ -63,44 +63,6 @@ export const fetchHistory = async (
   return Object.fromEntries(entityIds.map((id) => [id, toSeries(raw?.[id])]));
 };
 
-/** One saved LoadCast forecast: when it was published and its hours (start ms, kWh). */
-export interface LoadCastIssue {
-  at: number;
-  hours: { start: number; kwh: number }[];
-}
-
-/**
- * Every LoadCast forecast published in [start, end] plus the one in force at
- * `start`, reduced to start and kWh per hour (the attribute is large and
- * changes every 15 min).
- */
-export const fetchLoadCastHistory = async (
-  hass: HomeAssistant,
-  entityId: string,
-  start: number,
-  end: number,
-): Promise<LoadCastIssue[]> => {
-  if (!hass.callWS) throw new Error("history is not available");
-  const raw = await hass.callWS<Record<string, { a?: { forecast?: unknown }; lu: number; lc?: number }[]>>({
-    type: "history/history_during_period",
-    start_time: new Date(start).toISOString(),
-    end_time: new Date(end).toISOString(),
-    entity_ids: [entityId],
-    minimal_response: false,
-    no_attributes: false,
-    significant_changes_only: false,
-  });
-  return (raw?.[entityId] ?? [])
-    .map((st) => ({
-      at: st.lu * 1000,
-      hours: (Array.isArray(st.a?.forecast) ? (st.a?.forecast as { period_start?: string; kwh?: number }[]) : [])
-        .map((h) => ({ start: new Date(h.period_start ?? "").getTime(), kwh: Number(h.kwh) }))
-        .filter((h) => Number.isFinite(h.start) && Number.isFinite(h.kwh)),
-    }))
-    .filter((f) => f.hours.length)
-    .sort((a, b) => a.at - b.at);
-};
-
 /** History in W, using the entity's current unit (history is fetched without attributes). */
 export const powerSeries = (hass: HomeAssistant, history: Record<string, Series>, ids: string[]): Series | undefined => {
   const parts = ids
