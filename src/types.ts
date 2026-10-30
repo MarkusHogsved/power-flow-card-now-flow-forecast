@@ -14,7 +14,7 @@ export interface HomeAssistant {
   callWS?: <T>(msg: Record<string, unknown>) => Promise<T>;
 }
 
-export type ViewName = "now" | "flow" | "forecast" | "review";
+export type ViewName = "now" | "flow" | "forecast" | "review" | "price";
 
 export interface SolarConfig {
   /** Solar production power (W/kW). */
@@ -126,6 +126,13 @@ export interface LoadCastConfig {
 export interface CardConfig {
   type: string;
   default_view?: ViewName;
+  /**
+   * Which views the card offers, in this order (default all). With one view
+   * the tabs are hidden - e.g. `views: [price]` for a card with only the prices.
+   */
+  views?: ViewName[];
+  /** The status line and price at the top (default true). */
+  show_header?: boolean;
   /** Key for remembering the last view on this device (one per card on a dashboard). */
   view_key?: string;
   home: { entity: string };

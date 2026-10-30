@@ -17,12 +17,19 @@ import type { ViewContext } from "./views/context";
 import { renderFlow } from "./views/flow";
 import { renderForecast } from "./views/forecast";
 import { renderNow } from "./views/now";
+import { renderPrice } from "./views/price";
 import { renderReview, type ReviewHours, type ReviewState } from "./views/review";
 import { VEHICLE_HOURS, type VehicleChartState } from "./views/vehicle";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.6.3";
-const VIEWS: ViewName[] = ["now", "flow", "forecast", "review"];
+export const VERSION = "0.7.0";
+const VIEWS: ViewName[] = ["now", "flow", "forecast", "review", "price"];
+
+/** The views this card offers: `views` from the config (valid ones, in its order), else all. */
+const viewsOf = (config: CardConfig): ViewName[] => {
+  const chosen = (config.views ?? []).filter((v) => VIEWS.includes(v));
+  return chosen.length ? chosen : VIEWS;
+};
 /** Review history is fetched again when older than this. */
 const REVIEW_MAX_AGE_MS = 5 * 60_000;
 /** An unfolded vehicle tile refreshes its history at most this often. */
@@ -39,13 +46,14 @@ const loadHours = (config: CardConfig): ReviewHours => {
 };
 
 const loadView = (config: CardConfig): ViewName => {
+  const views = viewsOf(config);
   try {
     const saved = localStorage.getItem(storageKey(config)) as ViewName | null;
-    if (saved && VIEWS.includes(saved)) return saved;
+    if (saved && views.includes(saved)) return saved;
   } catch {
     // storage blocked (private mode, previews) - fall back to the default view
   }
-  return config.default_view ?? "now";
+  return config.default_view && views.includes(config.default_view) ? config.default_view : views[0];
 };
 
 export class PowerFlowCardNowFlowForecast extends LitElement {
@@ -81,6 +89,8 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
     if (config.default_view && !VIEWS.includes(config.default_view)) {
       throw new Error(`default_view must be one of ${VIEWS.join(", ")}`);
     }
+    const unknown = (config.views ?? []).filter((v) => !VIEWS.includes(v));
+    if (unknown.length) throw new Error(`views: unknown ${unknown.join(", ")} (use ${VIEWS.join(", ")})`);
     this._config = config;
     this._view = loadView(config);
     this._review = { hours: loadHours(config), loading: false };
@@ -196,7 +206,13 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
           ${h.reason ? this._importReason(h.reason) : nothing}
         </div>
         ${h.price
-          ? html`<div class="price" @click=${() => this._moreInfo(this._config?.grid?.price)}>
+          ? html`<div
+              class="price"
+              @click=${() =>
+                this._config && viewsOf(this._config).includes("price") && this._view !== "price"
+                  ? this._select("price")
+                  : this._moreInfo(this._config?.grid?.price)}
+            >
               ${h.price.name}
               <b>${h.price.value}</b>
               <span>${h.price.unit}</span>
@@ -287,23 +303,28 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
     if (!this._config || !this.hass) return nothing;
     const model = computeModel(this.hass, this._config);
     const ctx = this._context(model);
+    const views = viewsOf(this._config);
     return html`
       <ha-card>
-        ${this._header(model)}
-        <div class="tabs" role="group">
-          ${VIEWS.map(
-            (v) => html`<button type="button" aria-pressed=${this._view === v ? "true" : "false"} @click=${() => this._select(v)}>
-              ${t(`view.${v}`)}
-            </button>`,
-          )}
-        </div>
+        ${this._config.show_header === false ? nothing : this._header(model)}
+        ${views.length > 1
+          ? html`<div class="tabs" role="group">
+              ${views.map(
+                (v) => html`<button type="button" aria-pressed=${this._view === v ? "true" : "false"} @click=${() => this._select(v)}>
+                  ${t(`view.${v}`)}
+                </button>`,
+              )}
+            </div>`
+          : nothing}
         ${this._view === "now"
           ? renderNow(ctx)
           : this._view === "flow"
             ? renderFlow(ctx)
             : this._view === "forecast"
               ? renderForecast(ctx)
-              : renderReview(ctx, this._review, this._setHours)}
+              : this._view === "price"
+                ? renderPrice(ctx)
+                : renderReview(ctx, this._review, this._setHours)}
       </ha-card>
     `;
   }

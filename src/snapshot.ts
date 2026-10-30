@@ -467,7 +467,7 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
     unavailable: null,
     unit,
     zero: range.zero,
-    bars: buy.map((p) => ({ f: range.f(p.value), c: rgb(PRICE_COLORS[priceClass(p.value, allAvg)]) })),
+    bars: buy.map((p) => ({ f: range.f(p.value), c: rgb(PRICE_COLORS[priceClass(p.value, allAvg)]), at: hhmm(p.start), text: price(p.value) })),
     sell: sellPoints.length ? sellValues.map((v) => (v === null ? null : range.f(v))) : [],
     now: cur,
     nowX: cur >= 0 ? (cur + (now.getTime() - buy[cur].start.getTime()) / step) / buy.length : -1,
@@ -500,3 +500,5 @@ export const fullSnapshot = (ctx: ViewContext, review: ReviewState, histories: M
 });
 
 export type FullSnapshot = ReturnType<typeof fullSnapshot>;
+
+export type PriceViewSnapshot = ReturnType<typeof priceViewSnapshot>;

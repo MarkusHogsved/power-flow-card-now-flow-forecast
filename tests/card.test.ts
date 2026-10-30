@@ -467,6 +467,43 @@ describe("card", () => {
     expect(p.bars[1].f).toBeGreaterThan(p.zero);
   });
 
+  test("Price view: a card with only the prices, no tabs, bars with time and price", async () => {
+    const quarters = Array.from({ length: 96 }, (_, i) => 1 + (i % 8) / 10);
+    const states = {
+      ...eveningStates,
+      "sensor.price": ["1.23", { unit_of_measurement: "SEK/kWh", today: quarters, tomorrow: [] }] as [string, Record<string, unknown>],
+    };
+    const card = await mount({ ...houseConfig, views: ["price"], show_header: false }, states);
+    const r = root(card);
+    expect(r.querySelector(".tabs")).toBeNull();
+    expect(r.querySelector(".header")).toBeNull();
+    expect(r.querySelector(".section-title")?.textContent).toBe("Price today");
+    const bars = r.querySelectorAll("svg.price-chart rect");
+    expect(bars).toHaveLength(96);
+    expect(bars[0].querySelector("title")?.textContent).toBe("00:00 1.00 SEK/kWh");
+    expect(r.querySelectorAll(".price-tiles .tile").length).toBeGreaterThanOrEqual(4);
+  });
+
+  test("views picks and orders the tabs; the header price opens Price", async () => {
+    const quarters = Array.from({ length: 96 }, () => 1.5);
+    const states = {
+      ...eveningStates,
+      "sensor.price": ["1.23", { unit_of_measurement: "SEK/kWh", today: quarters, tomorrow: [] }] as [string, Record<string, unknown>],
+    };
+    const card = await mount({ ...houseConfig, views: ["now", "price"] }, states);
+    const labels = [...root(card).querySelectorAll(".tabs button")].map((b) => b.textContent?.trim());
+    expect(labels).toEqual(["Now", "Price"]);
+    root(card).querySelector<HTMLElement>(".price")!.click();
+    await card.updateComplete;
+    expect(tab(card, "Price").getAttribute("aria-pressed")).toBe("true");
+    expect(root(card).querySelector("svg.price-chart")).not.toBeNull();
+  });
+
+  test("unknown views are refused", () => {
+    const card = document.createElement("power-flow-card-now-flow-forecast") as PowerFlowCardNowFlowForecast;
+    expect(() => card.setConfig({ ...houseConfig, views: ["prices" as "price"] })).toThrow(/views: unknown prices/);
+  });
+
   test("all phases share one row, under the fuse label", async () => {
     const card = await mount(houseConfig);
     const row = root(card).querySelector<HTMLElement>(".phases")!;

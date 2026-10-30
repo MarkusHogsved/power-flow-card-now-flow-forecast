@@ -381,6 +381,15 @@ export const styles = css`
   .tile b {
     font-size: 18px;
   }
+  .price-chart text {
+    font-size: 13px;
+  }
+  .price-tiles {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  .price-tiles .tile b {
+    font-size: 16px;
+  }
   .verdict {
     font-size: 13px;
     font-weight: 600;
