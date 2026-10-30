@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0
+
+- Snapshot: `details` - the last 24 h of solar, grid, home and each battery
+  as 96 buckets (signed for grid and batteries, the battery level as a line,
+  Solcast's forecast for solar) with their figures: today/forecast/peak,
+  bought/sold/cost/highest import and export, used and expected rest of day,
+  charged/discharged and lowest/highest level. History is fetched in the
+  background at most every 5 min.
+- Native P4 display: tap solar, grid, home or a battery on Now for that chart
+  and its figures (the vehicle tile works as before).
+
 ## 0.7.1
 
 - The tabs always share one row, however many views the card has (five no

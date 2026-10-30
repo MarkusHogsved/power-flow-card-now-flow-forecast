@@ -713,7 +713,7 @@ void EnergyUi::apply_price_view_(JsonObject p) {
 
 // ---------------------------------------------------------------- Vehicle chart
 
-static const int OV_W = 860, OV_H = 290;
+static const int OV_W = 860, OV_H = 236;
 
 void EnergyUi::overlay_cb(lv_event_t *e) {
   static_cast<EnergyUi *>(lv_event_get_user_data(e))->close_overlay_();
@@ -724,6 +724,19 @@ void EnergyUi::tile_cb(lv_event_t *e) {
   auto *tile = static_cast<lv_obj_t *>(lv_event_get_current_target(e));
   size_t i = (size_t) (intptr_t) lv_obj_get_user_data(tile);
   if (i < self->running_entities_.size()) self->open_overlay_(self->running_entities_[i]);
+}
+
+void EnergyUi::node_cb(lv_event_t *e) {
+  auto *self = static_cast<EnergyUi *>(lv_event_get_user_data(e));
+  int code = (int) (intptr_t) lv_obj_get_user_data(static_cast<lv_obj_t *>(lv_event_get_current_target(e)));
+  static const char *const NODES[] = {"solar", "grid", "home"};
+  self->open_overlay_(code < 10 ? std::string(NODES[code]) : "battery-" + std::to_string(code - 10));
+}
+
+void EnergyUi::make_tappable_(lv_obj_t *obj, int code) {
+  lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_user_data(obj, (void *) (intptr_t) code);
+  lv_obj_add_event_cb(obj, EnergyUi::node_cb, LV_EVENT_CLICKED, this);
 }
 
 void EnergyUi::build_overlay_() {
@@ -750,6 +763,12 @@ void EnergyUi::build_overlay_() {
   this->ov_ticks_ = plain(p);
   lv_obj_set_pos(this->ov_ticks_, 20, 52 + OV_H + 4);
   lv_obj_set_size(this->ov_ticks_, OV_W, 22);
+  // Figures under the chart (node details; empty for a vehicle)
+  this->ov_stats_ = plain(p);
+  lv_obj_set_pos(this->ov_stats_, 20, 52 + OV_H + 32);
+  lv_obj_set_size(this->ov_stats_, OV_W, 96);
+  lv_obj_set_flex_flow(this->ov_stats_, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(this->ov_stats_, 10, 0);
   lv_obj_t *hint = this->text_(p, this->small_, MUTED, "×");
   lv_obj_align(hint, LV_ALIGN_TOP_RIGHT, -16, 10);
   show(this->ov_, false);
@@ -776,6 +795,11 @@ void EnergyUi::draw_overlay_() {
   this->ov_key_ = it->second;
   JsonDocument doc = json::parse_json(it->second);
   JsonObject v = doc.as<JsonObject>();
+  lv_obj_clean(this->ov_stats_);
+  if (!v["series"].isNull()) {
+    this->draw_detail_(v);
+    return;
+  }
   uint32_t color = v["color"] | 0xB39DF0;
   set_text(this->ov_title_, v["title"] | "");
   std::string power = v["powerText"] | "";
@@ -825,9 +849,85 @@ void EnergyUi::draw_overlay_() {
   }
 }
 
-void EnergyUi::apply_vehicles_(JsonArray list) {
+// A node's last 24 h: signed bars from the zero line (bought/sold, charging/
+// discharging), the forecast dashed, the battery level as a line, figures below
+void EnergyUi::draw_detail_(JsonObject v) {
+  uint32_t color = v["color"] | TEXT, neg = v["negColor"] | color;
+  set_text(this->ov_title_, v["title"] | "");
+  JsonObject lg = v["legend"];
+  set_text(this->ov_power_, lg["series"] | "");
+  lv_obj_set_style_text_color(this->ov_power_, lv_color_hex(color), 0);
+  std::string right = std::string(lg["soc"] | "");
+  if (right.empty()) right = std::string(lg["forecast"] | "");
+  set_text(this->ov_soc_, right.c_str());
+  lv_obj_set_style_text_color(this->ov_soc_, lv_color_hex(std::string(lg["soc"] | "").empty() ? MUTED : BATTERY), 0);
+  lv_obj_align(this->ov_soc_, LV_ALIGN_TOP_RIGHT, -60, 14);
+  lv_obj_align_to(this->ov_power_, this->ov_soc_, LV_ALIGN_OUT_LEFT_MID, -20, 0);
+
+  float mx = v["max"] | 1000.0f, mn = v["min"] | 0.0f;
+  if (mx - mn < 1) mx = mn + 1;
+  auto y = [&](float val) { return (mx - val) / (mx - mn) * (OV_H - 2) + 1; };
+  float zero = y(0);
+  Canvas &c = this->ov_canvas_;
+  c.clear(0x0B0D10);
+  JsonArray s = v["series"];
+  size_t n = s.size();
+  float bw = n ? (float) OV_W / n : OV_W;
+  for (size_t i = 0; i < n; i++) {
+    float val = s[i] | 0.0f, top = y(val);
+    uint32_t col = val >= 0 ? color : neg;
+    for (int x = (int) (bw * i); x < (int) (bw * (i + 1)); x++) c.vspan(x, top, zero, col, 70);
+    if (val != 0) c.line(bw * i, top, bw * (i + 1), top, col, 1.5f);
+  }
+  float px = -1, py = 0;
+  JsonArray fc = v["forecast"];
+  for (size_t i = 0; i < fc.size(); i++) {
+    if (fc[i].isNull()) {
+      px = -1;
+      continue;
+    }
+    float x = bw * (i + 0.5f), yy = y(fc[i] | 0.0f);
+    if (px >= 0) c.line(px, py, x, yy, TEXT, 1.5f, 160, 5);
+    px = x;
+    py = yy;
+  }
+  px = -1;
+  JsonArray soc = v["soc"];
+  for (size_t i = 0; i < soc.size(); i++) {
+    if (soc[i].isNull()) {
+      px = -1;
+      continue;
+    }
+    float x = bw * (i + 0.5f), yy = OV_H - (soc[i] | 0.0f) / 100 * OV_H;
+    if (px >= 0) c.line(px, py, x, yy, BATTERY, 2.5f);
+    px = x;
+    py = yy;
+  }
+  c.fill_rect(0, (int) zero, OV_W, (int) zero + 1, MUTED, 255);
+  c.done();
+  lv_obj_clean(this->ov_ticks_);
+  for (JsonObject t : v["ticks"].as<JsonArray>()) {
+    lv_obj_t *l = this->text_(this->ov_ticks_, this->small_, MUTED, t["label"] | "");
+    lv_obj_set_pos(l, (int) ((t["x"] | 0.0f) * OV_W) - 9, 0);
+  }
+  JsonArray st = v["stats"];
+  int tw = st.size() ? (OV_W - 10 * ((int) st.size() - 1)) / (int) st.size() : OV_W;
+  for (JsonObject x : st) {
+    lv_obj_t *tile = plain(this->ov_stats_);
+    lv_obj_set_size(tile, tw, 84);
+    lv_obj_set_style_bg_color(tile, lv_color_hex(TILE_BG), 0);
+    lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(tile, 12, 0);
+    lv_obj_set_pos(this->text_(tile, this->small_, MUTED, x["label"] | ""), 12, 10);
+    lv_obj_set_pos(this->text_(tile, this->bold_, TEXT, x["value"] | ""), 12, 40);
+  }
+}
+
+// Vehicles by their power entity, nodes by id (solar, grid, home, battery-N)
+void EnergyUi::apply_vehicles_(JsonArray list, JsonArray details) {
   this->vehicles_.clear();
   for (JsonObject v : list) this->vehicles_[v["entity"] | ""] = key_of(v);
+  for (JsonObject d : details) this->vehicles_[d["id"] | ""] = key_of(d);
   if (this->ov_entity_.empty()) return;
   if (this->vehicles_.count(this->ov_entity_))
     this->draw_overlay_();

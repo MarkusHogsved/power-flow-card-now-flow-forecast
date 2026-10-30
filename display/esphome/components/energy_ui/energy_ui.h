@@ -76,6 +76,9 @@ class EnergyUi : public Component {
   static void tile_cb(lv_event_t *e);
   static void overlay_cb(lv_event_t *e);
   static void to_price_cb(lv_event_t *e);
+  static void node_cb(lv_event_t *e);
+  void make_tappable_(lv_obj_t *obj, int code);
+  void draw_detail_(JsonObject v);
   void build_tabs_();
   void select_(int view);
   void build_flow_();
@@ -87,7 +90,7 @@ class EnergyUi : public Component {
   void apply_flow_(JsonObject f);
   void apply_forecast_(JsonObject f);
   void apply_review_(JsonObject r);
-  void apply_vehicles_(JsonArray list);
+  void apply_vehicles_(JsonArray list, JsonArray details);
   void open_overlay_(const std::string &entity);
   void close_overlay_();
   void draw_overlay_();
@@ -159,7 +162,7 @@ class EnergyUi : public Component {
   Canvas pv_canvas_;
   std::string pv_key_;
 
-  lv_obj_t *ov_{}, *ov_title_{}, *ov_power_{}, *ov_soc_{}, *ov_ticks_{};
+  lv_obj_t *ov_{}, *ov_title_{}, *ov_power_{}, *ov_soc_{}, *ov_ticks_{}, *ov_stats_{};
   Canvas ov_canvas_;
   std::string ov_entity_, ov_key_;
   std::map<std::string, std::string> vehicles_;  // entity -> its history as JSON

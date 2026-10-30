@@ -64,7 +64,7 @@ export const fetchHistory = async (
 };
 
 /** History in W, using the entity's current unit (history is fetched without attributes). */
-const powerSeries = (hass: HomeAssistant, history: Record<string, Series>, ids: string[]): Series | undefined => {
+export const powerSeries = (hass: HomeAssistant, history: Record<string, Series>, ids: string[]): Series | undefined => {
   const parts = ids
     .filter((id) => history[id]?.length)
     .map((id) => {

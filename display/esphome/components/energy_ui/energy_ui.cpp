@@ -267,6 +267,7 @@ void EnergyUi::build_() {
   this->solar_text_ = this->label_(this->solar_node_, this->bold_, TEXT, 0, 0);
   lv_obj_align(this->solar_text_, LV_ALIGN_LEFT_MID, 50, 0);
   this->solar_label_ = this->label_(now, this->small_, MUTED, 378, 112);
+  this->make_tappable_(this->solar_node_, 0);
 
   this->grid_node_ = this->box_(now, 20, 300, 130, 64, NODE_BORDER, 2);
   i = this->label_(this->grid_node_, this->icons_, GRID, 0, 0);
@@ -275,8 +276,10 @@ void EnergyUi::build_() {
   this->grid_text_ = this->label_(this->grid_node_, this->bold_, TEXT, 0, 0);
   lv_obj_align(this->grid_text_, LV_ALIGN_LEFT_MID, 50, 0);
   this->grid_label_ = this->label_(now, this->small_, MUTED, 20, 372);
+  this->make_tappable_(this->grid_node_, 1);
 
   lv_obj_t *home = this->box_(now, 440, 296, 140, 72, TEXT, 3);
+  this->make_tappable_(home, 2);
   i = this->label_(home, this->icons_, TEXT, 0, 0);
   lv_label_set_text(i, ICON_HOME);
   lv_obj_align(i, LV_ALIGN_LEFT_MID, 10, 0);
@@ -402,6 +405,7 @@ void EnergyUi::rebuild_cells_(size_t n) {
     BatteryCell c;
     c.box = plain(this->bank_cells_);
     lv_obj_set_size(c.box, w, 78);
+    this->make_tappable_(c.box, 10 + (int) k);
     c.soc = this->label_(c.box, this->bold_, TEXT, 0, 2);
     lv_obj_set_width(c.soc, w);
     lv_obj_set_style_text_align(c.soc, LV_TEXT_ALIGN_CENTER, 0);
@@ -665,7 +669,7 @@ void EnergyUi::loop() {
         this->apply_forecast_(root["forecast"]);
         this->apply_review_(root["review"]);
         this->apply_price_view_(root["price"]);
-        this->apply_vehicles_(root["vehicles"]);
+        this->apply_vehicles_(root["vehicles"], root["details"]);
       }
     } else {
       ESP_LOGW(TAG, "model.json: unexpected content (%u bytes)", (unsigned) body.size());
