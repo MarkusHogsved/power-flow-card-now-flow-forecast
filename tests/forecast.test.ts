@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { cheapestBlock, expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
+import { cheapestBlock, currentPriceIndex, expectedImportKwh, pricePeriodMs, readPrices, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
 import type { BatteryState } from "../src/model";
 import { niceStep, stepDecimals } from "../src/snapshot";
 import { makeHass } from "./helpers";
@@ -186,6 +186,18 @@ describe("readUpcomingPrices", () => {
     const raw = Array.from({ length: 24 }, (_, h) => ({ start: new Date(2026, 9, 30, h).toISOString(), value: h }));
     const hass = makeHass({ "sensor.np": ["1", { today: Array(24).fill(99), raw_today: raw }] });
     expect(readUpcomingPrices(hass, "sensor.np", now)[0].value).toBe(10);
+  });
+
+  test("the day clocks go forward: 96 wall-clock quarters without duplicate times", () => {
+    // 28/3 2027 in Stockholm: 02:00-02:59 does not exist; nordpool_kvart fills it with placeholders (99)
+    const today = Array.from({ length: 96 }, (_, i) => (i >= 8 && i < 12 ? 99 : i));
+    const hass = makeHass({ "sensor.price": ["1", { today, tomorrow: [] }] });
+    const now = new Date("2027-03-28T15:10:00+02:00");
+    const all = readPrices(hass, "sensor.price", now);
+    expect(new Set(all.map((p) => p.start.getTime())).size).toBe(all.length);
+    expect(all.find((p) => p.start.getHours() === 3 && p.start.getMinutes() === 0)?.value).toBe(12);
+    expect(pricePeriodMs(all)).toBe(15 * 60_000);
+    expect(cheapestBlock(all, currentPriceIndex(all, now), 1)).not.toBeNull();
   });
 
   test("Nord Pool raw_today entries work too", () => {
