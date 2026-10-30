@@ -326,6 +326,8 @@ void EnergyUi::build_() {
   this->pr_title_ = this->label_(now, this->small_, MUTED, RIGHT_X, PRICES_Y);
   this->pr_range_ = this->label_(now, this->small_, MUTED, 0, PRICES_Y);
   this->pr_canvas_.create(now, RIGHT_X, PRICES_Y + 24, RIGHT_W, PRICES_H);
+  lv_obj_add_flag(this->pr_canvas_.obj, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(this->pr_canvas_.obj, EnergyUi::to_price_cb, LV_EVENT_CLICKED, this);
   this->pr_ticks_ = plain(now);
   lv_obj_set_pos(this->pr_ticks_, RIGHT_X, PRICES_Y + 24 + PRICES_H + 2);
   lv_obj_set_size(this->pr_ticks_, RIGHT_W, 20);
@@ -346,10 +348,14 @@ void EnergyUi::build_() {
   this->price_unit_ = this->label_(this->price_box_, this->small_, MUTED, 0, 44);
   lv_obj_align(this->price_unit_, LV_ALIGN_TOP_RIGHT, -12, 44);
   show(this->price_box_, false);
+  // The price box (all views) and the small chart open the Price view
+  lv_obj_add_flag(this->price_box_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(this->price_box_, EnergyUi::to_price_cb, LV_EVENT_CLICKED, this);
 
   this->build_flow_();
   this->build_forecast_();
   this->build_review_();
+  this->build_price_();
   this->build_tabs_();
   this->build_overlay_();
   this->built_ = true;
@@ -656,6 +662,7 @@ void EnergyUi::loop() {
         this->apply_flow_(root["flow"]);
         this->apply_forecast_(root["forecast"]);
         this->apply_review_(root["review"]);
+        this->apply_price_view_(root["price"]);
         this->apply_vehicles_(root["vehicles"]);
       }
     } else {

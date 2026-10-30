@@ -170,17 +170,12 @@ export interface PricePoint {
 }
 
 /**
- * Prices from now on, per quarter or hour as the entity gives them, at most
- * `hours` ahead. Reads `today`/`tomorrow` lists of numbers (96 quarters from
- * local midnight, as sensor.elpris_kop_nu) or Nord Pool's
- * `raw_today`/`raw_tomorrow` ({start, value} entries).
+ * All known prices, today and tomorrow, per quarter or hour as the entity
+ * gives them. Reads Nord Pool's `raw_today`/`raw_tomorrow` ({start, value}
+ * entries) when present, else `today`/`tomorrow` lists of numbers (96
+ * quarters from local midnight, as sensor.elpris_kop_nu).
  */
-export const readUpcomingPrices = (
-  hass: HomeAssistant,
-  entityId: string | undefined,
-  now: Date,
-  hours = 12,
-): PricePoint[] => {
+export const readPrices = (hass: HomeAssistant, entityId: string | undefined, now: Date): PricePoint[] => {
   const attrs = entityId ? hass.states[entityId]?.attributes : undefined;
   if (!attrs) return [];
   const points: PricePoint[] = [];
@@ -218,10 +213,38 @@ export const readUpcomingPrices = (
     day(0, attrs.today);
     day(1, attrs.tomorrow);
   }
-  points.sort((a, b) => a.start.getTime() - b.start.getTime());
-  // From the period that holds now
-  const first = points.findIndex((p, i) => i + 1 >= points.length || points[i + 1].start > now);
+  return points.sort((a, b) => a.start.getTime() - b.start.getTime());
+};
+
+/** Index of the period that holds `now`, -1 when the prices end before it. */
+export const currentPriceIndex = (points: PricePoint[], now: Date): number => {
+  const i = points.findIndex((p, k) => k + 1 >= points.length || points[k + 1].start > now);
+  return i >= 0 && points[i].start <= now ? i : -1;
+};
+
+/** Prices from the period that holds now, at most `hours` ahead. */
+export const readUpcomingPrices = (
+  hass: HomeAssistant,
+  entityId: string | undefined,
+  now: Date,
+  hours = 12,
+): PricePoint[] => {
+  const points = readPrices(hass, entityId, now);
+  const first = currentPriceIndex(points, now);
   if (first < 0) return [];
   const until = points[first].start.getTime() + hours * 3_600_000;
   return points.slice(first).filter((p) => p.start.getTime() < until);
+};
+
+/** The cheapest run of `hours` from index `from` on: its first index and average, null if too short. */
+export const cheapestBlock = (points: PricePoint[], from: number, hours: number): { index: number; avg: number } | null => {
+  if (points.length < 2 || from < 0) return null;
+  const step = points[1].start.getTime() - points[0].start.getTime();
+  const n = Math.max(Math.round((hours * 3_600_000) / step), 1);
+  let best: { index: number; avg: number } | null = null;
+  for (let i = from; i + n <= points.length; i++) {
+    const avg = points.slice(i, i + n).reduce((s, p) => s + p.value, 0) / n;
+    if (!best || avg < best.avg) best = { index: i, avg };
+  }
+  return best;
 };

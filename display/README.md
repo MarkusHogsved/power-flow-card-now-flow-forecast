@@ -21,7 +21,8 @@ Home Assistant ──websocket──▶ renderer (headless Chromium) ──JPEG�
 
 Every ten minutes the renderer checks whether the card in HACS or its own
 `server.mjs` (at `RENDERER_URL`) has changed; if so it exits and Docker's
-restart policy (`restart: unless-stopped`) starts it again with both.
+restart policy (`restart: unless-stopped`) starts it again with both. `GET /reload`
+does the same at once, e.g. right after updating the card in HACS.
 
 The renderer reads the card's configuration from your dashboard
 (`DASHBOARD`, `CARD_INDEX`), so the display always matches it. It also

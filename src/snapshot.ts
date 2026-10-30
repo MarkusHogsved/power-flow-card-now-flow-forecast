@@ -1,4 +1,4 @@
-import { peakIndex, readUpcomingPrices, sumKwh } from "./forecast";
+import { cheapestBlock, currentPriceIndex, peakIndex, readPrices, readUpcomingPrices, sumKwh, type PricePoint } from "./forecast";
 import { formatEnergy, formatNumber, formatPercent, formatPower, formatUntil } from "./hass";
 import { COLORS, type Flows, type LoadState, type Model } from "./model";
 import { average, valueAt, type Series } from "./review";
@@ -375,14 +375,91 @@ export const vehicleSnapshot = (ctx: ViewContext, l: LoadState, h: VehicleHistor
   };
 };
 
+/** A step for the price axis giving at most five lines up to `max`. */
+const niceStep = (max: number): number => [0.1, 0.25, 0.5, 1, 2, 5, 10].find((s) => max / s <= 5) ?? 20;
+
+/**
+ * The Price view: all known prices (today, and tomorrow once published) per
+ * period, the sell price as a line, now, and what is cheap and expensive.
+ */
+export const priceViewSnapshot = (ctx: ViewContext) => {
+  const { hass, config, model: m, now } = ctx;
+  const buy = readPrices(hass, config.grid?.price, now);
+  const unit = m.priceUnit || "";
+  if (buy.length < 4) return { title: t("price.title_today"), unavailable: t("price.unavailable") };
+  const sell = new Map(readPrices(hass, config.grid?.sell_price, now).map((p) => [p.start.getTime(), p.value]));
+  const cur = currentPriceIndex(buy, now);
+  const price = (v: number) => `${formatNumber(hass, v, 2)} ${unit}`;
+  const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  const step = buy[1].start.getTime() - buy[0].start.getTime();
+  const avg = (list: PricePoint[]) => list.reduce((s, p) => s + p.value, 0) / (list.length || 1);
+  const sellValues = buy.map((p) => sell.get(p.start.getTime()) ?? null);
+  const max = Math.max(...buy.map((p) => p.value), ...sellValues.filter((v): v is number => v !== null), 0.01) * 1.05;
+  const allAvg = avg(buy);
+  const gridStep = niceStep(max);
+  const grid: { f: number; label: string }[] = [];
+  for (let v = gridStep; v < max; v += gridStep) grid.push({ f: v / max, label: formatNumber(hass, v, gridStep < 1 ? 2 : 0) });
+
+  const today = buy.filter((p) => p.start.toDateString() === now.toDateString());
+  const tomorrow = buy.filter((p) => p.start.toDateString() !== now.toDateString() && p.start > now);
+  const span = (list: PricePoint[]) => {
+    const lo = list.reduce((a, b) => (b.value < a.value ? b : a));
+    const hi = list.reduce((a, b) => (b.value > a.value ? b : a));
+    return t("price.min_max", { min: formatNumber(hass, lo.value, 2), min_at: hhmm(lo.start), max: formatNumber(hass, hi.value, 2), max_at: hhmm(hi.start) });
+  };
+  const block = (hours: number, label: string) => {
+    const b = cheapestBlock(buy, Math.max(cur, 0), hours);
+    if (!b) return null;
+    const end = new Date(buy[b.index].start.getTime() + Math.round((hours * 3_600_000) / step) * step);
+    return { label, value: `${hhmm(buy[b.index].start)}–${hhmm(end)}`, sub: t("price.avg", { price: price(b.avg) }) };
+  };
+  const tiles = [
+    cur >= 0
+      ? {
+          label: t("price.now"),
+          value: price(buy[cur].value),
+          sub: cur + 1 < buy.length ? t("price.next", { price: price(buy[cur + 1].value) }) : "",
+        }
+      : null,
+    today.length ? { label: t("price.today"), value: t("price.avg", { price: price(avg(today)) }), sub: span(today) } : null,
+    tomorrow.length
+      ? { label: t("price.tomorrow_tile"), value: t("price.avg", { price: price(avg(tomorrow)) }), sub: span(tomorrow) }
+      : { label: t("price.tomorrow_tile"), value: "–", sub: t("price.tomorrow_pending") },
+    block(1, t("price.cheapest_hour")),
+    block(3, t("price.cheapest_block", { hours: "3" })),
+  ].filter((x) => x !== null);
+
+  return {
+    title: tomorrow.length ? t("price.title") : t("price.title_today"),
+    unavailable: null,
+    unit,
+    bars: buy.map((p) => ({ f: Math.max(p.value, 0) / max, c: rgb(PRICE_COLORS[priceClass(p.value, allAvg)]) })),
+    sell: sell.size ? sellValues.map((v) => (v === null ? null : Math.max(v, 0) / max)) : [],
+    now: cur,
+    nowX: cur >= 0 ? (cur + (now.getTime() - buy[cur].start.getTime()) / step) / buy.length : -1,
+    grid,
+    ticks: buy
+      .map((p, i) => ({ p, i }))
+      .filter(({ p, i }) => i > 0 && p.start.getMinutes() === 0 && p.start.getHours() % 3 === 0)
+      .map(({ p, i }) => ({ x: i / buy.length, label: String(p.start.getHours()).padStart(2, "0"), day: p.start.getHours() === 0 })),
+    dayLabel: t("price.tomorrow"),
+    legend: [
+      { label: t("price.buy"), kind: "area" },
+      ...(sell.size ? [{ label: t("price.sell"), kind: "line" }] : []),
+    ],
+    tiles,
+  };
+};
+
 /** Every view, for a display that draws its own interface: Now at the top level (as in v1), the rest beside it. */
 export const fullSnapshot = (ctx: ViewContext, review: ReviewState, histories: Map<string, VehicleHistory>) => ({
   ...nowSnapshot(ctx),
   v: 2,
-  tabs: (["now", "flow", "forecast", "review"] as const).map((v) => t(`view.${v}`)),
+  tabs: (["now", "flow", "forecast", "review", "price"] as const).map((v) => t(`view.${v}`)),
   flow: flowSnapshot(ctx),
   forecast: forecastSnapshot(ctx),
   review: reviewSnapshot(ctx, review),
+  price: priceViewSnapshot(ctx),
   vehicles: ctx.model.running
     .filter((l) => l.socEntity && histories.has(l.entity))
     .map((l) => vehicleSnapshot(ctx, l, histories.get(l.entity) as VehicleHistory)),

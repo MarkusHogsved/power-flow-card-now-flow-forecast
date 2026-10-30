@@ -110,7 +110,7 @@ void EnergyUi::tab_cb(lv_event_t *e) {
 
 // The tabs: a rail along the left edge, an icon over each name. In landscape
 // the height is what is scarce, so the views get all of it under the header.
-static const char *const TAB_ICONS[] = {"\U000F1904", "\U000F11DF", "\U000F0127", "\U000F02DA"};
+static const char *const TAB_ICONS[] = {"\U000F1904", "\U000F11DF", "\U000F0127", "\U000F02DA", "\U000F0128"};
 
 void EnergyUi::build_tabs_() {
   lv_obj_t *rail = plain(this->screen_);
@@ -120,16 +120,16 @@ void EnergyUi::build_tabs_() {
   for (int k = 0; k < VIEWS; k++) {
     lv_obj_t *btn = plain(rail);
     lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_pos(btn, 6, 24 + k * 136);
-    lv_obj_set_size(btn, RAIL_W - 12, 116);
+    lv_obj_set_pos(btn, 6, 12 + k * 116);
+    lv_obj_set_size(btn, RAIL_W - 12, 104);
     lv_obj_set_style_radius(btn, 16, 0);
     lv_obj_set_style_bg_color(btn, lv_color_hex(0x24343A), 0);
     lv_obj_set_user_data(btn, (void *) (intptr_t) k);
     lv_obj_add_event_cb(btn, EnergyUi::tab_cb, LV_EVENT_CLICKED, this);
     lv_obj_t *icon = this->text_(btn, this->icons_, MUTED, TAB_ICONS[k]);
-    lv_obj_align(icon, LV_ALIGN_CENTER, 0, -14);
+    lv_obj_align(icon, LV_ALIGN_CENTER, 0, -12);
     lv_obj_t *l = this->text_(btn, this->small_, MUTED, "");
-    lv_obj_align(l, LV_ALIGN_CENTER, 0, 24);
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, 22);
     this->tabs_[k] = btn;
     this->tab_icons_[k] = icon;
     this->tab_labels_[k] = l;
@@ -145,7 +145,7 @@ void EnergyUi::select_(int view) {
     lv_obj_set_style_bg_opa(this->tabs_[k], k == view ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
     lv_obj_set_style_text_color(this->tab_labels_[k], lv_color_hex(k == view ? TEXT : MUTED), 0);
     lv_obj_set_style_text_color(this->tab_icons_[k], lv_color_hex(k == view ? BATTERY : MUTED), 0);
-    lv_obj_align(this->tab_labels_[k], LV_ALIGN_CENTER, 0, 24);
+    lv_obj_align(this->tab_labels_[k], LV_ALIGN_CENTER, 0, 22);
   }
 }
 
@@ -572,6 +572,139 @@ void EnergyUi::apply_review_(JsonObject r) {
     set_text(this->rv_footer_verdict_, foot["verdict"] | "");
     lv_obj_set_style_text_color(this->rv_footer_verdict_, lv_color_hex(foot["c"] | GOOD), 0);
     lv_obj_align(this->rv_footer_verdict_, LV_ALIGN_TOP_RIGHT, 0, 0);
+  }
+}
+
+// ---------------------------------------------------------------- Price
+
+static const int PV_X = 64, PV_Y = 34, PV_W = MAIN_W - PV_X - 24, PV_H = 290;
+
+void EnergyUi::to_price_cb(lv_event_t *e) {
+  auto *self = static_cast<EnergyUi *>(lv_event_get_user_data(e));
+  self->close_overlay_();
+  self->select_(PRICE_VIEW);
+}
+
+void EnergyUi::build_price_() {
+  lv_obj_t *v = plain(this->main_);
+  lv_obj_set_pos(v, 0, CONTENT_Y);
+  lv_obj_set_size(v, MAIN_W, CONTENT_H);
+  this->views_[PRICE_VIEW] = v;
+  this->pv_title_ = this->text_(v, this->medium_, MUTED, "");
+  lv_obj_set_pos(this->pv_title_, 24, 2);
+  this->pv_legend_ = plain(v);
+  lv_obj_set_size(this->pv_legend_, LV_SIZE_CONTENT, 24);
+  lv_obj_set_flex_flow(this->pv_legend_, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(this->pv_legend_, 18, 0);
+  lv_obj_align(this->pv_legend_, LV_ALIGN_TOP_RIGHT, -24, 4);
+  this->pv_canvas_.create(v, PV_X, PV_Y, PV_W, PV_H);
+  this->pv_labels_ = plain(v);
+  lv_obj_set_size(this->pv_labels_, MAIN_W, PV_Y + PV_H + 24);
+  this->pv_unavailable_ = this->text_(v, this->medium_, MUTED, "");
+  lv_obj_set_pos(this->pv_unavailable_, 24, PV_Y + 20);
+  this->pv_tiles_ = plain(v);
+  lv_obj_set_pos(this->pv_tiles_, 24, PV_Y + PV_H + 30);
+  lv_obj_set_size(this->pv_tiles_, MAIN_W - 48, 128);
+  lv_obj_set_flex_flow(this->pv_tiles_, LV_FLEX_FLOW_ROW);
+  lv_obj_set_style_pad_column(this->pv_tiles_, 10, 0);
+}
+
+void EnergyUi::apply_price_view_(JsonObject p) {
+  if (p.isNull()) return;
+  std::string key = key_of(p);
+  if (key == this->pv_key_) return;
+  this->pv_key_ = key;
+  set_text(this->pv_title_, p["title"] | "");
+  bool unavailable = !p["unavailable"].isNull();
+  set_text(this->pv_unavailable_, unavailable ? (p["unavailable"] | "") : "");
+  show(this->pv_canvas_.obj, !unavailable);
+  show(this->pv_labels_, !unavailable);
+  show(this->pv_tiles_, !unavailable);
+  show(this->pv_legend_, !unavailable);
+  if (unavailable) return;
+
+  // Bars per period (past dimmed, now full), the sell price as a line, price
+  // lines across, midnight and now marked
+  JsonArray bars = p["bars"];
+  JsonArray sell = p["sell"];
+  size_t n = bars.size();
+  int now = p["now"] | -1;
+  Canvas &c = this->pv_canvas_;
+  c.clear();
+  lv_obj_clean(this->pv_labels_);
+  for (JsonObject g : p["grid"].as<JsonArray>()) {
+    float y = PV_H - (g["f"] | 0.0f) * PV_H;
+    c.line(0, y, PV_W, y, BORDER, 1, 255, 3);
+    lv_obj_t *l = this->text_(this->pv_labels_, this->small_, MUTED, g["label"] | "");
+    lv_obj_set_pos(l, 24, PV_Y + (int) y - 10);
+  }
+  float bw = n ? (float) PV_W / n : PV_W;
+  for (size_t i = 0; i < n; i++) {
+    int h = std::max(1, (int) lroundf((bars[i]["f"] | 0.0f) * PV_H));
+    int x0 = (int) (bw * i), x1 = std::max(x0 + 1, (int) (bw * (i + 1)) - (bw > 4 ? 1 : 0));
+    uint8_t a = (int) i < now ? 60 : (int) i == now ? 255 : 170;
+    c.fill_rect(x0, PV_H - h, x1, PV_H, bars[i]["c"] | 0, a);
+  }
+  float px = -1, py = 0;
+  for (size_t i = 0; i < sell.size(); i++) {
+    if (sell[i].isNull()) {
+      px = -1;
+      continue;
+    }
+    float x = bw * (i + 0.5f), y = PV_H - (sell[i] | 0.0f) * PV_H;
+    if (px >= 0) c.line(px, py, x, y, GRID, 2);
+    px = x;
+    py = y;
+  }
+  c.fill_rect(0, PV_H - 1, PV_W, PV_H, BORDER, 255);
+  for (JsonObject t : p["ticks"].as<JsonArray>()) {
+    float x = (t["x"] | 0.0f) * PV_W;
+    if (t["day"] | false) {
+      c.line(x, 0, x, PV_H, MUTED, 1, 255, 4);
+      lv_obj_t *d = this->text_(this->pv_labels_, this->small_, MUTED, p["dayLabel"] | "");
+      lv_obj_set_pos(d, PV_X + (int) x + 6, PV_Y + 2);
+    }
+    lv_obj_t *l = this->text_(this->pv_labels_, this->small_, MUTED, t["label"] | "");
+    lv_obj_set_pos(l, PV_X + (int) x - 9, PV_Y + PV_H + 4);
+  }
+  float nx = p["nowX"] | -1.0f;
+  if (nx >= 0) c.line(nx * PV_W, 0, nx * PV_W, PV_H, TEXT, 2);
+  c.done();
+
+  lv_obj_clean(this->pv_legend_);
+  for (JsonObject g : p["legend"].as<JsonArray>()) {
+    lv_obj_t *item = plain(this->pv_legend_);
+    lv_obj_set_size(item, LV_SIZE_CONTENT, 22);
+    lv_obj_t *sw = plain(item);
+    bool line = std::string(g["kind"] | "") == "line";
+    lv_obj_set_size(sw, 16, line ? 3 : 12);
+    lv_obj_set_pos(sw, 0, line ? 9 : 4);
+    lv_obj_set_style_radius(sw, 2, 0);
+    lv_obj_set_style_bg_color(sw, lv_color_hex(line ? GRID : 0xF0C05A), 0);
+    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
+    lv_obj_set_pos(this->text_(item, this->small_, MUTED, g["label"] | ""), 22, 0);
+  }
+  lv_obj_align(this->pv_legend_, LV_ALIGN_TOP_RIGHT, -24, 4);
+
+  lv_obj_clean(this->pv_tiles_);
+  JsonArray tiles = p["tiles"];
+  int tw = tiles.size() ? (MAIN_W - 48 - 10 * ((int) tiles.size() - 1)) / (int) tiles.size() : 160;
+  for (JsonObject t : tiles) {
+    lv_obj_t *tile = plain(this->pv_tiles_);
+    lv_obj_set_size(tile, tw, 128);
+    lv_obj_set_style_bg_color(tile, lv_color_hex(TILE_BG), 0);
+    lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(tile, 12, 0);
+    lv_obj_set_style_pad_all(tile, 12, 0);
+    lv_obj_set_flex_flow(tile, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(tile, 4, 0);
+    this->text_(tile, this->small_, MUTED, t["label"] | "");
+    lv_obj_t *val = this->text_(tile, this->bold_, TEXT, t["value"] | "");
+    lv_obj_set_width(val, tw - 24);
+    lv_label_set_long_mode(val, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_t *sub = this->text_(tile, this->small_, MUTED, t["sub"] | "");
+    lv_obj_set_width(sub, tw - 24);
+    lv_label_set_long_mode(sub, LV_LABEL_LONG_MODE_WRAP);
   }
 }
 

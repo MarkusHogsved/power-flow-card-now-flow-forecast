@@ -197,6 +197,7 @@ font:
       - "\U000F11DF"  # chart-sankey (tab Flow)
       - "\U000F0127"  # chart-areaspline (tab Forecast)
       - "\U000F02DA"  # history (tab Review)
+      - "\U000F0128"  # chart-bar (tab Price)
 
 energy_ui:
   url: ${renderer_url}/model.json
