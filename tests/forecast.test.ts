@@ -173,6 +173,20 @@ describe("readUpcomingPrices", () => {
     expect(p[0].start.getTime()).toBe(new Date("2026-10-25T03:00:00+01:00").getTime());
   });
 
+  test("25 hours on the day clocks go back: hourly steps", () => {
+    const now = new Date("2026-10-25T03:10:00+01:00");
+    const today = Array.from({ length: 25 }, (_, i) => i);
+    const hass = makeHass({ "sensor.price": ["1", { today, tomorrow: [] }] });
+    expect(readUpcomingPrices(hass, "sensor.price", now)[0].value).toBe(4);
+  });
+
+  test("explicit raw timestamps win over the plain lists", () => {
+    const now = new Date(2026, 9, 30, 10, 30);
+    const raw = Array.from({ length: 24 }, (_, h) => ({ start: new Date(2026, 9, 30, h).toISOString(), value: h }));
+    const hass = makeHass({ "sensor.np": ["1", { today: Array(24).fill(99), raw_today: raw }] });
+    expect(readUpcomingPrices(hass, "sensor.np", now)[0].value).toBe(10);
+  });
+
   test("Nord Pool raw_today entries work too", () => {
     const now = new Date(2026, 9, 30, 10, 30);
     const raw = Array.from({ length: 24 }, (_, h) => ({ start: new Date(2026, 9, 30, h).toISOString(), value: h }));

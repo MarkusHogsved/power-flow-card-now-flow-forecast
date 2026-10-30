@@ -197,8 +197,9 @@ export const readUpcomingPrices = (
           start = new Date(midnight);
           start.setHours(0, (i * 24 * 60) / list.length, 0, 0);
         } else {
-          // 92 or 100 quarters on a daylight-saving day: real 15-minute steps
-          start = new Date(midnight.getTime() + i * 15 * 60_000);
+          // A daylight-saving day (92/100 quarters or 23/25 hours): real steps from midnight
+          const step = list.length <= 25 ? 60 : 15;
+          start = new Date(midnight.getTime() + i * step * 60_000);
         }
         if (Number.isFinite(v)) points.push({ start, value: v as number });
       });
@@ -209,12 +210,13 @@ export const readUpcomingPrices = (
       }
     }
   };
-  if (Array.isArray(attrs.today)) {
-    day(0, attrs.today);
-    day(1, attrs.tomorrow);
-  } else {
+  // Explicit timestamps first (Nord Pool), else the plain lists
+  if (Array.isArray(attrs.raw_today) && attrs.raw_today.length) {
     day(0, attrs.raw_today);
     day(1, attrs.raw_tomorrow);
+  } else {
+    day(0, attrs.today);
+    day(1, attrs.tomorrow);
   }
   points.sort((a, b) => a.start.getTime() - b.start.getTime());
   // From the period that holds now
