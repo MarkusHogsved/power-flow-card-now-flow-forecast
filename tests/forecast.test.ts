@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { cheapestBlock, expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
 import type { BatteryState } from "../src/model";
-import { niceStep } from "../src/snapshot";
+import { niceStep, stepDecimals } from "../src/snapshot";
 import { makeHass } from "./helpers";
 
 const NOW = new Date("2026-10-20T21:20:00+02:00");
@@ -207,6 +207,10 @@ describe("price axis and cheapest window", () => {
     }
     expect(niceStep(500)).toBe(100);
     expect(niceStep(4.8)).toBe(1);
+  });
+
+  test("axis labels have the decimals the step needs", () => {
+    expect([1, 100, 2.5, 0.25, 0.5, 0.0025].map(stepDecimals)).toEqual([0, 0, 1, 2, 1, 4]);
   });
 
   test("cheapestBlock from a given index", () => {

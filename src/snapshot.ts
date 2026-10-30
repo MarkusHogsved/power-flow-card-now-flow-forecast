@@ -376,6 +376,13 @@ export const vehicleSnapshot = (ctx: ViewContext, l: LoadState, h: VehicleHistor
 };
 
 /** A 1/2/2.5/5 x 10^n step for the price axis giving at most five lines up to `max` (kr or öre alike). */
+/** Decimals that show every multiple of `step` exactly (2.5 -> 1, 0.25 -> 2, 0.0025 -> 4). */
+export const stepDecimals = (step: number): number => {
+  let d = 0;
+  while (d < 8 && Math.abs(step * 10 ** d - Math.round(step * 10 ** d)) > 1e-9) d++;
+  return d;
+};
+
 export const niceStep = (max: number): number => {
   const raw = Math.max(max, 1e-6) / 5;
   const mag = 10 ** Math.floor(Math.log10(raw));
@@ -402,7 +409,7 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
   const allAvg = avg(buy);
   const gridStep = niceStep(max);
   const grid: { f: number; label: string }[] = [];
-  const decimals = gridStep >= 1 ? 0 : gridStep >= 0.1 ? (Number.isInteger(gridStep * 10) ? 1 : 2) : 2;
+  const decimals = stepDecimals(gridStep);
   for (let v = gridStep; v < max - 1e-9; v += gridStep) grid.push({ f: v / max, label: formatNumber(hass, v, decimals) });
 
   const today = buy.filter((p) => p.start.toDateString() === now.toDateString());
