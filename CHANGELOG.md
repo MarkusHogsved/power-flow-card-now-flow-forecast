@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.2
+
+- Snapshot: a Price view - all known prices (today, and tomorrow once
+  published) with the sell price as a line, now, price lines, and tiles for
+  now/next, today and tomorrow (average, cheapest and dearest with times)
+  and the cheapest hour and 3 h ahead.
+- Native P4 display: the Price view as a fifth tab; tapping the price box
+  (in every view) or the small chart on Now opens it.
+- Renderer: `GET /reload` restarts it at once with the latest card and
+  renderer, e.g. right after a HACS update.
+
 ## 0.6.1
 
 - Snapshot: `prices` for Now - the header price for the coming 12 h, from the

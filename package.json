@@ -1,6 +1,6 @@
 {
   "name": "power-flow-card-now-flow-forecast",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Home energy card for Home Assistant with three views - Now, Flow and Forecast",
   "license": "MIT",
