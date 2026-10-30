@@ -9,6 +9,11 @@
   today's totals as rows (the tiles were too narrow).
 - Renderer: restarts itself when the card in HACS or its own `server.mjs`
   changes, so a release no longer needs a manual restart.
+- Renderer: runs the card in Home Assistant's timezone (read with
+  `get_config`, or `TZ`). In a UTC container every clock time in the card's
+  texts was an hour off (Review's period, events, solar peak).
+- Price lists with 92 or 100 quarters (daylight-saving days) are placed in
+  real 15-minute steps from midnight.
 
 ## 0.6.0
 

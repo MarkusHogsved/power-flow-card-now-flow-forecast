@@ -275,6 +275,20 @@ const start = async () => {
   });
   page = await browser.newPage();
   await page.setViewport({ width: WIDTH, height: HEIGHT });
+  // The card shows clock times and reads local-midnight price lists in the
+  // page's timezone: use Home Assistant's, not the container's (UTC)
+  let timeZone = env("TZ", "");
+  if (!timeZone) {
+    try {
+      timeZone = (await send({ type: "get_config" }))?.time_zone ?? "";
+    } catch (e) {
+      log("could not read Home Assistant's timezone:", e.message);
+    }
+  }
+  if (timeZone) {
+    await page.emulateTimezone(timeZone);
+    log("timezone", timeZone);
+  }
   page.on("pageerror", (e) => log("page error:", e.message));
   await page.exposeFunction("__callWS", (msg) => send(msg));
   await page.setContent(PAGE, { waitUntil: "networkidle0" });

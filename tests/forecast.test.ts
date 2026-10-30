@@ -162,6 +162,17 @@ describe("readUpcomingPrices", () => {
     expect(readUpcomingPrices(hass, "sensor.price", now)).toHaveLength(12);
   });
 
+  test("100 quarters on the day clocks go back: real 15-minute steps from midnight", () => {
+    // 25/10 2026 in Stockholm (tests run with TZ=Europe/Stockholm): 02:00-03:00 twice
+    const now = new Date("2026-10-25T03:10:00+01:00");
+    const today = Array.from({ length: 100 }, (_, i) => i);
+    const hass = makeHass({ "sensor.price": ["1", { today, tomorrow: [] }] });
+    const p = readUpcomingPrices(hass, "sensor.price", now);
+    // 03:00 CET is 4 h of real time after midnight CEST: quarter 16
+    expect(p[0].value).toBe(16);
+    expect(p[0].start.getTime()).toBe(new Date("2026-10-25T03:00:00+01:00").getTime());
+  });
+
   test("Nord Pool raw_today entries work too", () => {
     const now = new Date(2026, 9, 30, 10, 30);
     const raw = Array.from({ length: 24 }, (_, h) => ({ start: new Date(2026, 9, 30, h).toISOString(), value: h }));

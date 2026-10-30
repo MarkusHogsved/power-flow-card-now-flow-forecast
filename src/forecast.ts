@@ -187,11 +187,19 @@ export const readUpcomingPrices = (
   const day = (offset: number, list: unknown) => {
     if (!Array.isArray(list) || !list.length) return;
     if (typeof list[0] === "number") {
-      const step = (24 * 60) / list.length; // 96 quarters or 24 hours
+      const midnight = new Date(now);
+      midnight.setDate(midnight.getDate() + offset);
+      midnight.setHours(0, 0, 0, 0);
       list.forEach((v, i) => {
-        const start = new Date(now);
-        start.setDate(start.getDate() + offset);
-        start.setHours(0, i * step, 0, 0);
+        let start: Date;
+        if (list.length === 96 || list.length === 24) {
+          // Wall clock (as nordpool_kvart): quarter/hour i of the local day
+          start = new Date(midnight);
+          start.setHours(0, (i * 24 * 60) / list.length, 0, 0);
+        } else {
+          // 92 or 100 quarters on a daylight-saving day: real 15-minute steps
+          start = new Date(midnight.getTime() + i * 15 * 60_000);
+        }
         if (Number.isFinite(v)) points.push({ start, value: v as number });
       });
     } else {
