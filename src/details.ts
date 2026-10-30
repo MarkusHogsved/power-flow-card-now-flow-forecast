@@ -87,19 +87,21 @@ export const nodeDetails = (hass: HomeAssistant, config: CardConfig, h: DetailHi
     const s = input.solar;
     const top = peak(s, "max");
     // Solcast P50 per half hour for the chart (P10 is for decisions; here we show what is expected)
-    const p50 = new Map<number, number>();
+    // Periods of 30 or 60 min (as readSolarP10ByHour): each bucket takes the period that holds it
+    const periods: { a: number; b: number; w: number }[] = [];
     for (const id of config.solar.forecast_entities ?? []) {
       const per = hass.states[id]?.attributes?.detailedForecast;
       if (!Array.isArray(per)) continue;
+      const len = per.length > 30 ? 1_800_000 : 3_600_000;
       for (const p of per as { period_start?: string; pv_estimate?: number }[]) {
-        const ts = new Date(p.period_start ?? "").getTime();
-        if (Number.isFinite(ts) && Number.isFinite(p.pv_estimate)) p50.set(ts, (p.pv_estimate as number) * 1000);
+        const a = new Date(p.period_start ?? "").getTime();
+        if (Number.isFinite(a) && Number.isFinite(p.pv_estimate)) periods.push({ a, b: a + len, w: (p.pv_estimate as number) * 1000 });
       }
     }
     const forecast = Array.from({ length: BUCKETS }, (_, i) => {
       const mid = start + (i + 0.5) * step;
-      const half = Math.floor(mid / 1_800_000) * 1_800_000;
-      return p50.has(half) ? Math.round(p50.get(half) as number) : null;
+      const hit = periods.find((p) => p.a <= mid && mid < p.b);
+      return hit ? Math.round(hit.w) : null;
     });
     const today = readNumber(hass, config.solar.today_energy);
     const fcToday = readNumber(hass, config.solar.forecast_today);

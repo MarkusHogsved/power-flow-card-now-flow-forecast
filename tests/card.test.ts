@@ -436,6 +436,24 @@ describe("card", () => {
     expect(JSON.parse(JSON.stringify(d))).toEqual(d);
   });
 
+  test("details: an hourly Solcast forecast fills every bucket of its hour", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const hourStart = (h: number) => new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 - h * 3_600_000).toISOString();
+    const hourly = Array.from({ length: 24 }, (_, h) => ({ period_start: hourStart(h), pv_estimate: 2 }));
+    const card = await mount({ ...houseConfig, solar: { ...houseConfig.solar!, forecast_entities: ["sensor.fc"] } }, {
+      ...eveningStates,
+      "sensor.fc": ["1", { detailedForecast: hourly }],
+    });
+    const hass = makeHass({ ...eveningStates, "sensor.fc": ["1", { detailedForecast: hourly }] });
+    hass.callWS = (async () => ({ "sensor.solar": [{ s: "0", lu: now - 24 * 3600 }] })) as HomeAssistant["callWS"];
+    card.hass = hass;
+    await card.snapshotFull();
+    await new Promise((r) => setTimeout(r, 0));
+    const solar = (await card.snapshotFull())!.details.find((d) => d.id === "solar")!;
+    const known = (solar.forecast ?? []).slice(4, 90);
+    expect(known.every((v) => v === 2000)).toBe(true);
+  });
+
   test("snapshotFull never waits for history: a hanging recorder still gives live figures", async () => {
     const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc" };
     const states = eventStatesWithEv();
