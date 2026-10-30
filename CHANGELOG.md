@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.0
+
+- Home detail: the forecast comes from LoadCast's `past` attribute (LoadCast
+  0.1.7+), each hour as forecast when it began. 0.9.0 fetched the sensor's
+  history, but LoadCast keeps its forecast attributes out of the recorder,
+  so only the running hour showed. Without `past` there is no line.
+- The forecast line can have its own colour (`forecastColor`); home's is
+  purple so it stands out from the white bars. The P4 draws it a little
+  thicker, and the legend takes the line's colour.
+
 ## 0.9.0
 
 - Node details, home: LoadCast's forecast as a line against the outcome, each

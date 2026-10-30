@@ -858,7 +858,7 @@ void EnergyUi::draw_overlay_() {
 // A node's last 24 h: signed bars from the zero line (bought/sold, charging/
 // discharging), the forecast dashed, the battery level as a line, figures below
 void EnergyUi::draw_detail_(JsonObject v) {
-  uint32_t color = v["color"] | TEXT, neg = v["negColor"] | color;
+  uint32_t color = v["color"] | TEXT, neg = v["negColor"] | color, fcol = v["forecastColor"] | TEXT;
   set_text(this->ov_title_, v["title"] | "");
   JsonObject lg = v["legend"];
   set_text(this->ov_power_, lg["series"] | "");
@@ -866,7 +866,7 @@ void EnergyUi::draw_detail_(JsonObject v) {
   std::string right = std::string(lg["soc"] | "");
   if (right.empty()) right = std::string(lg["forecast"] | "");
   set_text(this->ov_soc_, right.c_str());
-  lv_obj_set_style_text_color(this->ov_soc_, lv_color_hex(std::string(lg["soc"] | "").empty() ? MUTED : BATTERY), 0);
+  lv_obj_set_style_text_color(this->ov_soc_, lv_color_hex(std::string(lg["soc"] | "").empty() ? fcol : BATTERY), 0);
   lv_obj_align(this->ov_soc_, LV_ALIGN_TOP_RIGHT, -60, 14);
   lv_obj_align_to(this->ov_power_, this->ov_soc_, LV_ALIGN_OUT_LEFT_MID, -20, 0);
 
@@ -893,7 +893,7 @@ void EnergyUi::draw_detail_(JsonObject v) {
       continue;
     }
     float x = bw * (i + 0.5f), yy = y(fc[i] | 0.0f);
-    if (px >= 0) c.line(px, py, x, yy, TEXT, 1.5f, 160, 5);
+    if (px >= 0) c.line(px, py, x, yy, fcol, 2.0f, 200, 5);
     px = x;
     py = yy;
   }

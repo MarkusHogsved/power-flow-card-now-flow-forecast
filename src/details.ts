@@ -2,10 +2,10 @@
 // (display/esphome): the last 24 h of solar, grid, home or one battery as
 // even buckets, with the figures that belong to it. Built from the same
 // history and series as Review.
-import { readLoadCast } from "./forecast";
+import { readLoadCast, readLoadCastPast } from "./forecast";
 import { formatEnergy, formatPercent, formatPower, readNumber } from "./hass";
-import { buildReviewInput, powerSeries, reviewEntities, type LoadCastIssue } from "./history";
-import { COLORS } from "./model";
+import { buildReviewInput, powerSeries, reviewEntities } from "./history";
+import { COLORS, LOAD_PALETTE } from "./model";
 import { average, extreme, integrate, valueAt, type Series } from "./review";
 import { t } from "./strings";
 import type { CardConfig, HomeAssistant } from "./types";
@@ -54,6 +54,8 @@ export interface NodeDetail {
   color: number;
   /** Colour below zero (sold, discharging); the main colour when absent. */
   negColor?: number;
+  /** Colour of the forecast line and its legend; white when absent. */
+  forecastColor?: number;
   /** 96 buckets over the last 24 h, W (signed for grid and batteries). */
   series: number[];
   forecast: (number | null)[] | null;
@@ -72,13 +74,11 @@ export interface DetailHistory {
   start: number;
   end: number;
   history: Record<string, Series>;
-  /** LoadCast forecasts published over the window (fetched separately, may be missing). */
-  loadcast?: LoadCastIssue[];
 }
 
 /** One chart per node: id, title, colours, 96 buckets in W, optional SOC and forecast lines, figures. */
 export const nodeDetails = (hass: HomeAssistant, config: CardConfig, h: DetailHistory, now: Date) => {
-  const { start, end, history, loadcast } = h;
+  const { start, end, history } = h;
   const step = (end - start) / BUCKETS;
   const input = buildReviewInput(hass, config, history, start, end);
   const tk = ticks(start, end);
@@ -168,18 +168,13 @@ export const nodeDetails = (hass: HomeAssistant, config: CardConfig, h: DetailHi
           return b > a ? sum + (hr.kwh * (b - a)) / 3_600_000 : sum;
         }, 0)
       : null;
-    // LoadCast per hour as it stood when the hour began (the sensor itself only
-    // holds the hours from now on); the hour now running from the live sensor
-    const issues = [...(loadcast ?? []), { at: now.getTime(), hours: lc.map((x) => ({ start: x.start.getTime(), kwh: x.kwh })) }];
+    // LoadCast per hour as forecast when the hour began (attribute `past`,
+    // LoadCast 0.1.7+; the forecast attributes are not recorded), the hour
+    // now running from the live forecast if `past` does not hold it yet
+    const past = readLoadCastPast(hass, config.loadcast?.forecast);
     const forecastAt = (mid: number): number | null => {
-      let best: number | null = null;
-      for (const f of issues) {
-        const hr = f.hours.find((x) => x.start <= mid && mid < x.start + 3_600_000);
-        if (!hr) continue;
-        if (f.at <= hr.start || best === null) best = hr.kwh;
-        if (f.at > hr.start) break;
-      }
-      return best === null ? null : Math.round(best * 1000);
+      const hit = [...past, ...lc].find((x) => x.start.getTime() <= mid && mid < x.start.getTime() + 3_600_000);
+      return hit ? Math.round(hit.kwh * 1000) : null;
     };
     const forecast = Array.from({ length: BUCKETS }, (_, i) => forecastAt(start + (i + 0.5) * step));
     const predicted = forecast.every((v) => v !== null) ? forecast.reduce<number>((sum, v) => sum + (v ?? 0), 0) * (step / 3_600_000) / 1000 : null;
@@ -187,6 +182,8 @@ export const nodeDetails = (hass: HomeAssistant, config: CardConfig, h: DetailHi
       id: "home",
       title: t("detail.home"),
       color: 0xf2f2f2,
+      // Not white like the bars: the forecast has to stand out from them
+      forecastColor: rgb(LOAD_PALETTE[0]),
       series: buckets(s, start, step),
       forecast: forecast.some((v) => v !== null) ? forecast : null,
       soc: null,
