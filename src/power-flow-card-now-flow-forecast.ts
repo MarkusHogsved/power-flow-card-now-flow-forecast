@@ -23,7 +23,7 @@ import { renderReview, type ReviewHours, type ReviewState } from "./views/review
 import { VEHICLE_HOURS, type VehicleChartState } from "./views/vehicle";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.7.1";
+export const VERSION = "0.8.0";
 const VIEWS: ViewName[] = ["now", "flow", "forecast", "review", "price"];
 
 /** The views this card offers: `views` from the config (valid ones, in its order), else all. */
