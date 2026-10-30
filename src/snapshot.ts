@@ -375,8 +375,12 @@ export const vehicleSnapshot = (ctx: ViewContext, l: LoadState, h: VehicleHistor
   };
 };
 
-/** A step for the price axis giving at most five lines up to `max`. */
-const niceStep = (max: number): number => [0.1, 0.25, 0.5, 1, 2, 5, 10].find((s) => max / s <= 5) ?? 20;
+/** A 1/2/2.5/5 x 10^n step for the price axis giving at most five lines up to `max` (kr or öre alike). */
+export const niceStep = (max: number): number => {
+  const raw = Math.max(max, 1e-6) / 5;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  return ([1, 2, 2.5, 5, 10].map((k) => k * mag).find((s) => s >= raw) as number) ?? 10 * mag;
+};
 
 /**
  * The Price view: all known prices (today, and tomorrow once published) per
@@ -398,7 +402,8 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
   const allAvg = avg(buy);
   const gridStep = niceStep(max);
   const grid: { f: number; label: string }[] = [];
-  for (let v = gridStep; v < max; v += gridStep) grid.push({ f: v / max, label: formatNumber(hass, v, gridStep < 1 ? 2 : 0) });
+  const decimals = gridStep >= 1 ? 0 : gridStep >= 0.1 ? (Number.isInteger(gridStep * 10) ? 1 : 2) : 2;
+  for (let v = gridStep; v < max - 1e-9; v += gridStep) grid.push({ f: v / max, label: formatNumber(hass, v, decimals) });
 
   const today = buy.filter((p) => p.start.toDateString() === now.toDateString());
   const tomorrow = buy.filter((p) => p.start.toDateString() !== now.toDateString() && p.start > now);
@@ -408,7 +413,8 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
     return t("price.min_max", { min: formatNumber(hass, lo.value, 2), min_at: hhmm(lo.start), max: formatNumber(hass, hi.value, 2), max_at: hhmm(hi.start) });
   };
   const block = (hours: number, label: string) => {
-    const b = cheapestBlock(buy, Math.max(cur, 0), hours);
+    // From the next period boundary: a window already under way is not on offer in full
+    const b = cheapestBlock(buy, cur < 0 ? 0 : now > buy[cur].start ? cur + 1 : cur, hours);
     if (!b) return null;
     const end = new Date(buy[b.index].start.getTime() + Math.round((hours * 3_600_000) / step) * step);
     return { label, value: `${hhmm(buy[b.index].start)}–${hhmm(end)}`, sub: t("price.avg", { price: price(b.avg) }) };

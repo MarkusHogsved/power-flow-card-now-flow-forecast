@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
+import { cheapestBlock, expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
 import type { BatteryState } from "../src/model";
+import { niceStep } from "../src/snapshot";
 import { makeHass } from "./helpers";
 
 const NOW = new Date("2026-10-20T21:20:00+02:00");
@@ -194,5 +195,25 @@ describe("readUpcomingPrices", () => {
     const p = readUpcomingPrices(hass, "sensor.np", now);
     expect(p[0].value).toBe(10);
     expect(p).toHaveLength(12);
+  });
+});
+
+describe("price axis and cheapest window", () => {
+  test("the axis step keeps to at most five lines, in kr and öre", () => {
+    for (const max of [0.4, 2.3, 4.8, 48, 500, 1234]) {
+      const step = niceStep(max);
+      expect(max / step).toBeLessThanOrEqual(5);
+      expect(max / step).toBeGreaterThan(1);
+    }
+    expect(niceStep(500)).toBe(100);
+    expect(niceStep(4.8)).toBe(1);
+  });
+
+  test("cheapestBlock from a given index", () => {
+    const start = new Date(2026, 9, 30, 10).getTime();
+    const pts = [5, 1, 3, 2, 2, 9].map((value, i) => ({ start: new Date(start + i * 3_600_000), value }));
+    expect(cheapestBlock(pts, 0, 1)).toEqual({ index: 1, avg: 1 });
+    expect(cheapestBlock(pts, 2, 2)).toEqual({ index: 3, avg: 2 });
+    expect(cheapestBlock(pts, 5, 2)).toBeNull();
   });
 });
