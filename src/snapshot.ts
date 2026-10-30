@@ -1,3 +1,4 @@
+import { nodeDetails, type DetailHistory } from "./details";
 import { cheapestBlock, currentPriceIndex, peakIndex, pricePeriodMs, readPrices, readUpcomingPrices, sumKwh, type PricePoint } from "./forecast";
 import { formatEnergy, formatNumber, formatPercent, formatPower, formatUntil } from "./hass";
 import { COLORS, type Flows, type LoadState, type Model } from "./model";
@@ -485,7 +486,12 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
 };
 
 /** Every view, for a display that draws its own interface: Now at the top level (as in v1), the rest beside it. */
-export const fullSnapshot = (ctx: ViewContext, review: ReviewState, histories: Map<string, VehicleHistory>) => ({
+export const fullSnapshot = (
+  ctx: ViewContext,
+  review: ReviewState,
+  histories: Map<string, VehicleHistory>,
+  details: DetailHistory | null = null,
+) => ({
   ...nowSnapshot(ctx),
   v: 2,
   tabs: (["now", "flow", "forecast", "review", "price"] as const).map((v) => t(`view.${v}`)),
@@ -493,6 +499,7 @@ export const fullSnapshot = (ctx: ViewContext, review: ReviewState, histories: M
   forecast: forecastSnapshot(ctx),
   review: reviewSnapshot(ctx, review),
   price: priceViewSnapshot(ctx),
+  details: details ? nodeDetails(ctx.hass, ctx.config, details, ctx.now) : [],
   vehicles: ctx.model.running
     .filter((l) => l.socEntity && histories.has(l.entity))
     .map((l) => vehicleSnapshot(ctx, l, histories.get(l.entity) as VehicleHistory)),

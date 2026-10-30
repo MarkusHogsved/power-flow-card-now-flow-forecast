@@ -407,6 +407,35 @@ describe("card", () => {
     expect(calls.length).toBe(n);
   });
 
+  test("snapshotFull: tap-to-open details for solar, grid, home and each battery from 24 h of history", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const card = await mount(houseConfig);
+    const hass = makeHass(eveningStates);
+    hass.callWS = (async () => ({
+      "sensor.solar": [{ s: "0", lu: now - 23 * 3600 }, { s: "6000", lu: now - 12 * 3600 }, { s: "0", lu: now - 6 * 3600 }],
+      "sensor.grid": [{ s: "2000", lu: now - 23 * 3600 }, { s: "-3000", lu: now - 12 * 3600 }, { s: "0", lu: now - 6 * 3600 }],
+      "sensor.home": [{ s: "1500", lu: now - 24 * 3600 }],
+      "sensor.growatt_power": [{ s: "5000", lu: now - 12 * 3600 }, { s: "-1000", lu: now - 6 * 3600 }],
+      "sensor.growatt_soc": [{ s: "40", lu: now - 12 * 3600 }, { s: "90", lu: now - 6 * 3600 }],
+    })) as HomeAssistant["callWS"];
+    card.hass = hass;
+    expect((await card.snapshotFull())!.details).toEqual([]); // history arrives in the background
+    await new Promise((r) => setTimeout(r, 0));
+    const d = (await card.snapshotFull())!.details;
+    expect(d.map((x) => x.id)).toEqual(["solar", "grid", "home", "battery-0", "battery-1", "battery-2"]);
+    const by = Object.fromEntries(d.map((x) => [x.id, x]));
+    expect(by.solar.series).toHaveLength(96);
+    expect(Math.max(...by.solar.series)).toBe(6000);
+    expect(Math.min(...by.grid.series)).toBe(-3000); // sold below zero
+    expect(by.grid.stats.map((s) => s.label)).toContain("Highest export");
+    expect(by.home.stats[0]).toEqual({ label: "Used, 24 h", value: "36 kWh" });
+    const g = by["battery-0"];
+    expect(g.soc).not.toBeNull();
+    expect(g.stats.find((s) => s.label === "Charged, 24 h")?.value).toBe("30 kWh");
+    expect(g.stats.find((s) => s.label === "Discharged, 24 h")?.value).toBe("6.0 kWh");
+    expect(JSON.parse(JSON.stringify(d))).toEqual(d);
+  });
+
   test("snapshotFull never waits for history: a hanging recorder still gives live figures", async () => {
     const ev = { ...houseConfig.large_loads![0], soc: "sensor.ev_soc" };
     const states = eventStatesWithEv();

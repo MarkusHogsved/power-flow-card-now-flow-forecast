@@ -1,4 +1,5 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
+import { DETAIL_HOURS, detailEntities, type DetailHistory } from "./details";
 import { buildReviewInput, fetchHistory, reviewEntities } from "./history";
 import { computeModel, type Model } from "./model";
 import { computeReview } from "./review";
@@ -266,6 +267,9 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
 
   /** History of running vehicles for snapshotFull(), fetched at most once a minute each. */
   private _snapVehicles = new Map<string, VehicleHistory & { at: number }>();
+  /** The last 24 h of every node for snapshotFull() (tap a node on the display), at most every 5 min. */
+  private _snapDetails: DetailHistory | null = null;
+  private _snapDetailsAsked = 0;
   /** When each vehicle's history was last asked for (a failed request waits a minute too). */
   private _snapAsked = new Map<string, number>();
 
@@ -296,7 +300,16 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
         );
       }
     }
-    return fullSnapshot(this._context(model), this._review, this._snapVehicles);
+    if (hass.callWS && Date.now() - this._snapDetailsAsked >= REVIEW_MAX_AGE_MS) {
+      const end = Date.now();
+      this._snapDetailsAsked = end;
+      const start = end - DETAIL_HOURS * 3_600_000;
+      fetchHistory(hass, detailEntities(this._config), start, end).then(
+        (history) => (this._snapDetails = { start, end, history }),
+        () => undefined, // the nodes then open without a chart until the next try
+      );
+    }
+    return fullSnapshot(this._context(model), this._review, this._snapVehicles, this._snapDetails);
   }
 
   protected override render() {
