@@ -119,6 +119,10 @@ class EnergyUi : public Component {
   lv_obj_t *others_title_{}, *others_{};
   std::vector<std::pair<lv_obj_t *, lv_obj_t *>> other_rows_;
   lv_obj_t *phases_title_{};
+  lv_obj_t *pr_title_{}, *pr_range_{}, *pr_ticks_{};
+  Canvas pr_canvas_;
+  std::string pr_key_;
+  void apply_prices_(JsonObject p);
   std::vector<std::pair<lv_obj_t *, lv_obj_t *>> phases_;  // bar, text
   std::vector<lv_obj_t *> phase_names_;
   std::vector<FlowLine> flows_;

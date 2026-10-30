@@ -42,6 +42,8 @@ const en = {
   "other": "Other",
   "rest_of_home": "Rest of home",
   "fuse": "Fuse {amps} A",
+  "now.prices": "Price, next {hours} h",
+  "now.prices_range": "{min} – {max} {unit}",
   "flow.sources": "Sources",
   "flow.uses": "Uses",
   "flow.charging": "Charging {name}",

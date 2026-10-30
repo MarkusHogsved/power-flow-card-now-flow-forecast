@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
+import { expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
 import type { BatteryState } from "../src/model";
 import { makeHass } from "./helpers";
 
@@ -139,5 +139,35 @@ describe("vehicleByHour", () => {
   test("a window that has ended gives nothing", () => {
     const kwh = vehicleByHour(hours, 10, { start: new Date(2026, 9, 27, 17), end: new Date(2026, 9, 27, 18) }, new Date(2026, 9, 27, 19));
     expect(kwh).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe("readUpcomingPrices", () => {
+  const quarters = (base: number) => Array.from({ length: 96 }, (_, i) => base + i / 100);
+
+  test("today/tomorrow quarter lists: from the quarter that holds now, at most 12 h, over midnight", () => {
+    const now = new Date(2026, 9, 30, 18, 20);
+    const hass = makeHass({ "sensor.price": ["1", { today: quarters(1), tomorrow: quarters(2) }] });
+    const p = readUpcomingPrices(hass, "sensor.price", now);
+    expect(p).toHaveLength(48);
+    expect(p[0].start).toEqual(new Date(2026, 9, 30, 18, 15));
+    expect(p[0].value).toBeCloseTo(1 + 73 / 100);
+    expect(p[47].start).toEqual(new Date(2026, 9, 31, 6, 0));
+    expect(p[47].value).toBeCloseTo(2 + 24 / 100);
+  });
+
+  test("without tomorrow it stops at midnight", () => {
+    const now = new Date(2026, 9, 30, 21, 0);
+    const hass = makeHass({ "sensor.price": ["1", { today: quarters(1), tomorrow: [] }] });
+    expect(readUpcomingPrices(hass, "sensor.price", now)).toHaveLength(12);
+  });
+
+  test("Nord Pool raw_today entries work too", () => {
+    const now = new Date(2026, 9, 30, 10, 30);
+    const raw = Array.from({ length: 24 }, (_, h) => ({ start: new Date(2026, 9, 30, h).toISOString(), value: h }));
+    const hass = makeHass({ "sensor.np": ["1", { raw_today: raw }] });
+    const p = readUpcomingPrices(hass, "sensor.np", now);
+    expect(p[0].value).toBe(10);
+    expect(p).toHaveLength(12);
   });
 });

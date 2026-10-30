@@ -28,6 +28,8 @@ static const uint32_t SOLAR = 0xF5B942, GRID = 0x6CA8E8, BATTERY = 0x4FC1B0, BAT
 // MAIN_W wide) the header on top, the flow diagram left, loads and phases right
 static const int RAIL_W = 80, MAIN_W = 1024 - RAIL_W;
 static const int HEADER_H = 96;
+// The price chart sits under the loads, above the phases
+static const int PRICES_Y = 402, PRICES_H = 54;
 static const int RIGHT_X = 620, RIGHT_W = MAIN_W - RIGHT_X - 16;
 
 // MDI glyphs in the icon font (display yaml: font_icons)
@@ -295,7 +297,7 @@ void EnergyUi::build_() {
   // Right column: running loads and the rest, phases at the bottom
   lv_obj_t *right = plain(now);
   lv_obj_set_pos(right, RIGHT_X, HEADER_H + 8);
-  lv_obj_set_size(right, RIGHT_W, 400);
+  lv_obj_set_size(right, RIGHT_W, PRICES_Y - HEADER_H - 16);
   lv_obj_set_flex_flow(right, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(right, 8, 0);
   // Several running loads (a vehicle has up to three extra lines) and the
@@ -321,6 +323,12 @@ void EnergyUi::build_() {
   lv_obj_set_flex_flow(this->others_, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(this->others_, 4, 0);
 
+  this->pr_title_ = this->label_(now, this->small_, MUTED, RIGHT_X, PRICES_Y);
+  this->pr_range_ = this->label_(now, this->small_, MUTED, 0, PRICES_Y);
+  this->pr_canvas_.create(now, RIGHT_X, PRICES_Y + 24, RIGHT_W, PRICES_H);
+  this->pr_ticks_ = plain(now);
+  lv_obj_set_pos(this->pr_ticks_, RIGHT_X, PRICES_Y + 24 + PRICES_H + 2);
+  lv_obj_set_size(this->pr_ticks_, RIGHT_W, 20);
   this->phases_title_ = this->label_(now, this->small_, MUTED, RIGHT_X, 520);
   // Header
   this->title_ = this->label_(this->main_, this->large_, TEXT, 24, 12);
@@ -552,6 +560,8 @@ void EnergyUi::apply_(JsonObject root) {
     set_text(this->other_rows_[k].second, others[k]["text"] | "");
   }
 
+  this->apply_prices_(root["prices"]);
+
   JsonArray phases = root["phases"];
   set_text(this->phases_title_, phases.size() ? (labels["fuse"] | "") : "");
   if (this->phases_.size() != phases.size()) {
@@ -583,6 +593,44 @@ void EnergyUi::apply_(JsonObject root) {
     lv_bar_set_value(this->phases_[k].first, (int32_t) ((p["frac"] | 0.0f) * 1000), LV_ANIM_OFF);
     lv_obj_set_style_bg_color(this->phases_[k].first, lv_color_hex(p["warn"] | false ? WARN : GRID), LV_PART_INDICATOR);
     set_text(this->phases_[k].second, p["text"] | "");
+  }
+}
+
+// Price for the coming hours: bars by price class, the current period brighter
+void EnergyUi::apply_prices_(JsonObject p) {
+  bool has = !p.isNull();
+  show(this->pr_title_, has);
+  show(this->pr_range_, has);
+  show(this->pr_canvas_.obj, has);
+  show(this->pr_ticks_, has);
+  if (!has) return;
+  std::string key;
+  serializeJson(p, key);
+  if (key == this->pr_key_) return;
+  this->pr_key_ = key;
+  set_text(this->pr_title_, p["title"] | "");
+  set_text(this->pr_range_, p["range"] | "");
+  // Right-aligned with the chart: the label's width is known after a layout pass
+  lv_obj_update_layout(this->pr_range_);
+  lv_obj_set_x(this->pr_range_, RIGHT_X + RIGHT_W - lv_obj_get_width(this->pr_range_));
+  Canvas &c = this->pr_canvas_;
+  c.clear();
+  JsonArray bars = p["bars"];
+  size_t n = bars.size();
+  float bw = n ? (float) RIGHT_W / n : RIGHT_W;
+  for (size_t i = 0; i < n; i++) {
+    int h = std::max(2, (int) lroundf((bars[i]["f"] | 0.0f) * (PRICES_H - 2)));
+    int x0 = (int) (bw * i), x1 = std::max(x0 + 1, (int) (bw * (i + 1)) - 1);
+    c.fill_rect(x0, PRICES_H - h, x1, PRICES_H, bars[i]["c"] | 0, i == 0 ? 255 : 130);
+  }
+  c.done();
+  lv_obj_clean(this->pr_ticks_);
+  for (JsonObject t : p["ticks"].as<JsonArray>()) {
+    lv_obj_t *l = lv_label_create(this->pr_ticks_);
+    lv_obj_set_style_text_font(l, this->small_, 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(MUTED), 0);
+    lv_label_set_text(l, t["label"] | "");
+    lv_obj_set_pos(l, (int) ((t["x"] | 0.0f) * RIGHT_W) - 9, 0);
   }
 }
 
