@@ -19,6 +19,10 @@ Home Assistant ──websocket──▶ renderer (headless Chromium) ──JPEG�
   off when nobody has touched the screen for a while, and the next touch
   only wakes it up.
 
+Every ten minutes the renderer checks whether the card in HACS or its own
+`server.mjs` (at `RENDERER_URL`) has changed; if so it exits and Docker's
+restart policy (`restart: unless-stopped`) starts it again with both.
+
 The renderer reads the card's configuration from your dashboard
 (`DASHBOARD`, `CARD_INDEX`), so the display always matches it. It also
 loads the card from the HACS install on Home Assistant, so it runs the

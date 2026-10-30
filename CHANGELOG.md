@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.1
+
+- Snapshot: `prices` for Now - the header price for the coming 12 h, from the
+  price entity's `today`/`tomorrow` quarter lists or Nord Pool's
+  `raw_today`/`raw_tomorrow`, as bars coloured cheap / mid / expensive.
+- Native P4 display: that price chart above the phases on Now; Flow shows
+  today's totals as rows (the tiles were too narrow).
+- Renderer: restarts itself when the card in HACS or its own `server.mjs`
+  changes, so a release no longer needs a manual restart.
+
 ## 0.6.0
 
 - New `snapshotFull()`: every view as plain data (Now, Flow with its Sankey
