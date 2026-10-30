@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0
+
+- New view **Price**: today's prices (and tomorrow's once published) per
+  period, coloured cheap / mid / expensive, past periods dimmed, now and
+  midnight marked, the sell price (`grid.sell_price`) as a line, and tiles for
+  now/next, today, tomorrow and the cheapest hour and 3 h ahead. Hover or tap
+  a bar for its time and price. The same data as the native display's Price
+  view. Tapping the header price opens it.
+- New `views`: which views the card offers and in what order; with one view
+  the tabs are hidden (`views: [price]` makes a price card of its own).
+- New `show_header` (default `true`).
+
+## 0.6.3
+
+- Price view: the cheapest hour / 3 h only count unbroken runs of prices; a
+  missing period no longer gives a window with an unpriced part.
+
 ## 0.6.2
 
 - Snapshot: a Price view - all known prices (today, and tomorrow once

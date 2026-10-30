@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { cheapestBlock, expectedImportKwh, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
+import { cheapestBlock, currentPriceIndex, expectedImportKwh, pricePeriodMs, readPrices, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
 import type { BatteryState } from "../src/model";
 import { niceStep, stepDecimals } from "../src/snapshot";
 import { makeHass } from "./helpers";
@@ -188,6 +188,18 @@ describe("readUpcomingPrices", () => {
     expect(readUpcomingPrices(hass, "sensor.np", now)[0].value).toBe(10);
   });
 
+  test("the day clocks go forward: 96 wall-clock quarters without duplicate times", () => {
+    // 28/3 2027 in Stockholm: 02:00-02:59 does not exist; nordpool_kvart fills it with placeholders (99)
+    const today = Array.from({ length: 96 }, (_, i) => (i >= 8 && i < 12 ? 99 : i));
+    const hass = makeHass({ "sensor.price": ["1", { today, tomorrow: [] }] });
+    const now = new Date("2027-03-28T15:10:00+02:00");
+    const all = readPrices(hass, "sensor.price", now);
+    expect(new Set(all.map((p) => p.start.getTime())).size).toBe(all.length);
+    expect(all.find((p) => p.start.getHours() === 3 && p.start.getMinutes() === 0)?.value).toBe(12);
+    expect(pricePeriodMs(all)).toBe(15 * 60_000);
+    expect(cheapestBlock(all, currentPriceIndex(all, now), 1)).not.toBeNull();
+  });
+
   test("Nord Pool raw_today entries work too", () => {
     const now = new Date(2026, 9, 30, 10, 30);
     const raw = Array.from({ length: 24 }, (_, h) => ({ start: new Date(2026, 9, 30, h).toISOString(), value: h }));
@@ -216,8 +228,28 @@ describe("price axis and cheapest window", () => {
   test("cheapestBlock from a given index", () => {
     const start = new Date(2026, 9, 30, 10).getTime();
     const pts = [5, 1, 3, 2, 2, 9].map((value, i) => ({ start: new Date(start + i * 3_600_000), value }));
-    expect(cheapestBlock(pts, 0, 1)).toEqual({ index: 1, avg: 1 });
-    expect(cheapestBlock(pts, 2, 2)).toEqual({ index: 3, avg: 2 });
+    expect(cheapestBlock(pts, 0, 1)).toMatchObject({ index: 1, avg: 1, end: new Date(start + 2 * 3_600_000) });
+    expect(cheapestBlock(pts, 2, 2)).toMatchObject({ index: 3, avg: 2 });
     expect(cheapestBlock(pts, 5, 2)).toBeNull();
+  });
+
+  test("a gap at the start: the window's end uses the real period length", () => {
+    const at = (h: number) => new Date(2026, 9, 30, h);
+    const pts = [0, 2, 3, 4, 5].map((h) => ({ start: at(h), value: h === 3 ? 1 : 5 }));
+    expect(cheapestBlock(pts, 0, 1)).toMatchObject({ index: 2, end: at(4) });
+  });
+
+  test("cheapestBlock skips runs with a missing period", () => {
+    const at = (h: number) => new Date(2026, 9, 30, h);
+    // 13:00 is missing: 12, 14, 15 must not count as three hours in a row
+    const pts = [
+      { start: at(10), value: 5 },
+      { start: at(11), value: 5 },
+      { start: at(12), value: 1 },
+      { start: at(14), value: 1 },
+      { start: at(15), value: 1 },
+      { start: at(16), value: 4 },
+    ];
+    expect(cheapestBlock(pts, 0, 3)).toMatchObject({ index: 3, avg: 2, end: at(17) });
   });
 });

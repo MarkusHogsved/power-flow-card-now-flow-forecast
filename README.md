@@ -46,7 +46,7 @@ batteries, loads, phases, LoadCast) simply does not appear.
 
 ```yaml
 type: custom:power-flow-card-now-flow-forecast
-default_view: now            # now | flow | forecast | review
+default_view: now            # now | flow | forecast | review | price
 home:
   entity: sensor.home_power
 solar:
@@ -109,7 +109,9 @@ loadcast:
 | Key | Description |
 |---|---|
 | `home.entity` | **Required.** Total home consumption (W or kW). |
-| `default_view` | View shown first: `now` (default), `flow`, `forecast` or `review`. The last view you picked is remembered per device. |
+| `default_view` | View shown first: `now` (default), `flow`, `forecast`, `review` or `price`. The last view you picked is remembered per device. |
+| `views` | Which views the card offers, in that order (default all). With one view the tabs are hidden, e.g. `views: [price]` for a price card of its own. |
+| `show_header` | The status line and price at the top (default `true`). |
 | `view_key` | Give each card its own key if you have several on one dashboard, so they remember their views separately. |
 | `solar.entity` | Solar production power. |
 | `solar.today_energy` | Energy produced today (kWh). |

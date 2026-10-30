@@ -213,7 +213,11 @@ export const readPrices = (hass: HomeAssistant, entityId: string | undefined, no
     day(0, attrs.today);
     day(1, attrs.tomorrow);
   }
-  return points.sort((a, b) => a.start.getTime() - b.start.getTime());
+  points.sort((a, b) => a.start.getTime() - b.start.getTime());
+  // The day clocks go forward, a 96-quarter wall-clock list has placeholders for
+  // the hour that does not exist (nordpool_kvart), which land on 03:00-03:45:
+  // keep the last entry per time (the real ones come after the placeholders)
+  return points.filter((p, i) => i + 1 >= points.length || points[i + 1].start.getTime() !== p.start.getTime());
 };
 
 /** Index of the period that holds `now`, -1 when the prices end before it. */
@@ -236,15 +240,27 @@ export const readUpcomingPrices = (
   return points.slice(first).filter((p) => p.start.getTime() < until);
 };
 
-/** The cheapest run of `hours` from index `from` on: its first index and average, null if too short. */
-export const cheapestBlock = (points: PricePoint[], from: number, hours: number): { index: number; avg: number } | null => {
+/** The period length (ms): the shortest step, so a gap in the list cannot stretch it. */
+export const pricePeriodMs = (points: PricePoint[]): number => {
+  const steps = points.slice(1).map((p, k) => p.start.getTime() - points[k].start.getTime()).filter((d) => d > 0);
+  return steps.length ? Math.min(...steps) : 3_600_000;
+};
+
+/** The cheapest unbroken run of `hours` from index `from` on: first index, average and end, null if none. */
+export const cheapestBlock = (
+  points: PricePoint[],
+  from: number,
+  hours: number,
+): { index: number; avg: number; end: Date } | null => {
   if (points.length < 2 || from < 0) return null;
-  const step = points[1].start.getTime() - points[0].start.getTime();
+  const step = pricePeriodMs(points);
   const n = Math.max(Math.round((hours * 3_600_000) / step), 1);
-  let best: { index: number; avg: number } | null = null;
+  let best: { index: number; avg: number; end: Date } | null = null;
   for (let i = from; i + n <= points.length; i++) {
+    // Only unbroken runs: a missing period would leave part of the window unpriced
+    if (points[i + n - 1].start.getTime() - points[i].start.getTime() !== (n - 1) * step) continue;
     const avg = points.slice(i, i + n).reduce((s, p) => s + p.value, 0) / n;
-    if (!best || avg < best.avg) best = { index: i, avg };
+    if (!best || avg < best.avg) best = { index: i, avg, end: new Date(points[i].start.getTime() + n * step) };
   }
   return best;
 };
