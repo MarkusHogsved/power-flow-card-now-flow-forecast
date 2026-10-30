@@ -326,6 +326,8 @@ void EnergyUi::build_() {
   this->pr_title_ = this->label_(now, this->small_, MUTED, RIGHT_X, PRICES_Y);
   this->pr_range_ = this->label_(now, this->small_, MUTED, 0, PRICES_Y);
   this->pr_canvas_.create(now, RIGHT_X, PRICES_Y + 24, RIGHT_W, PRICES_H);
+  lv_obj_add_flag(this->pr_canvas_.obj, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(this->pr_canvas_.obj, EnergyUi::to_price_cb, LV_EVENT_CLICKED, this);
   this->pr_ticks_ = plain(now);
   lv_obj_set_pos(this->pr_ticks_, RIGHT_X, PRICES_Y + 24 + PRICES_H + 2);
   lv_obj_set_size(this->pr_ticks_, RIGHT_W, 20);
@@ -346,10 +348,14 @@ void EnergyUi::build_() {
   this->price_unit_ = this->label_(this->price_box_, this->small_, MUTED, 0, 44);
   lv_obj_align(this->price_unit_, LV_ALIGN_TOP_RIGHT, -12, 44);
   show(this->price_box_, false);
+  // The price box (all views) and the small chart open the Price view
+  lv_obj_add_flag(this->price_box_, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(this->price_box_, EnergyUi::to_price_cb, LV_EVENT_CLICKED, this);
 
   this->build_flow_();
   this->build_forecast_();
   this->build_review_();
+  this->build_price_();
   this->build_tabs_();
   this->build_overlay_();
   this->built_ = true;
@@ -618,10 +624,12 @@ void EnergyUi::apply_prices_(JsonObject p) {
   JsonArray bars = p["bars"];
   size_t n = bars.size();
   float bw = n ? (float) RIGHT_W / n : RIGHT_W;
+  int zero = (int) lroundf(PRICES_H - (p["zero"] | 0.0f) * PRICES_H);
   for (size_t i = 0; i < n; i++) {
-    int h = std::max(2, (int) lroundf((bars[i]["f"] | 0.0f) * (PRICES_H - 2)));
+    int y = (int) lroundf(PRICES_H - (bars[i]["f"] | 0.0f) * PRICES_H);
+    if (abs(y - zero) < 2) y = zero - 2;
     int x0 = (int) (bw * i), x1 = std::max(x0 + 1, (int) (bw * (i + 1)) - 1);
-    c.fill_rect(x0, PRICES_H - h, x1, PRICES_H, bars[i]["c"] | 0, i == 0 ? 255 : 130);
+    c.fill_rect(x0, std::min(y, zero), x1, std::max(y, zero), bars[i]["c"] | 0, i == 0 ? 255 : 130);
   }
   c.done();
   lv_obj_clean(this->pr_ticks_);
@@ -656,6 +664,7 @@ void EnergyUi::loop() {
         this->apply_flow_(root["flow"]);
         this->apply_forecast_(root["forecast"]);
         this->apply_review_(root["review"]);
+        this->apply_price_view_(root["price"]);
         this->apply_vehicles_(root["vehicles"]);
       }
     } else {

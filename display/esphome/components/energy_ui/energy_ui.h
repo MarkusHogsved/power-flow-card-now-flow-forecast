@@ -70,16 +70,20 @@ class EnergyUi : public Component {
   void rebuild_others_(size_t n);
 
   // The other views, tabs and the vehicle chart (views.cpp)
-  static const int VIEWS = 4;
+  static const int VIEWS = 5;
+  static const int PRICE_VIEW = 4;
   static void tab_cb(lv_event_t *e);
   static void tile_cb(lv_event_t *e);
   static void overlay_cb(lv_event_t *e);
+  static void to_price_cb(lv_event_t *e);
   void build_tabs_();
   void select_(int view);
   void build_flow_();
   void build_forecast_();
   void build_review_();
   void build_overlay_();
+  void build_price_();
+  void apply_price_view_(JsonObject p);
   void apply_flow_(JsonObject f);
   void apply_forecast_(JsonObject f);
   void apply_review_(JsonObject r);
@@ -150,6 +154,10 @@ class EnergyUi : public Component {
   lv_obj_t *rv_events_title_{}, *rv_events_{}, *rv_footer_{}, *rv_footer_text_{}, *rv_footer_verdict_{};
   Canvas rv_canvas_;
   std::string rv_key_;
+
+  lv_obj_t *pv_title_{}, *pv_legend_{}, *pv_labels_{}, *pv_tiles_{}, *pv_unavailable_{};
+  Canvas pv_canvas_;
+  std::string pv_key_;
 
   lv_obj_t *ov_{}, *ov_title_{}, *ov_power_{}, *ov_soc_{}, *ov_ticks_{};
   Canvas ov_canvas_;

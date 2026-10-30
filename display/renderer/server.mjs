@@ -6,6 +6,7 @@
 //
 // Endpoints:
 //   GET /frame.jpg               current picture (WIDTH x HEIGHT, already rotated; ETag, 304 when unchanged)
+//   GET /reload                  restart now with the latest card and renderer (Docker restarts it)
 //   GET /model.json              every view as data (the card's snapshotFull(); ETag, 304 when unchanged)
 //       ?tap=x,y&n=7             ... after a tap at display coordinates
 //       ?swipe=x1,y1,x2,y2&n=8   ... after a swipe
@@ -479,6 +480,12 @@ const server = http.createServer((req, res) => {
         const b = toCard(n("x2"), n("y2"));
         await scrollBy(a.y - b.y);
         done(204);
+      } else if (url.pathname === "/reload") {
+        // Fresh card and renderer now (e.g. right after a HACS update): exit,
+        // Docker's restart policy starts the container again
+        done(202, "restarting");
+        log("reload requested - restarting");
+        setTimeout(() => process.exit(0), 200);
       } else if (url.pathname === "/status") {
         done(200, JSON.stringify({
           connected,

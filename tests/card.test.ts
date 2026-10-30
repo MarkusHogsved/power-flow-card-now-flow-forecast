@@ -378,7 +378,7 @@ describe("card", () => {
     await card.updateComplete;
     const snap = (await card.snapshotFull())!;
     expect(snap.v).toBe(2);
-    expect(snap.tabs).toEqual(["Now", "Flow", "Forecast", "Review"]);
+    expect(snap.tabs).toEqual(["Now", "Flow", "Forecast", "Review", "Price"]);
     expect(snap.home.text).toBe("1.95 kW");
     expect(snap.flow.ribbons.length).toBeGreaterThan(0);
     expect(snap.flow.sinks.map((b) => b.label)).toContain("EV 11.0 kW");
@@ -425,6 +425,46 @@ describe("card", () => {
     const n = calls;
     await card.snapshotFull();
     expect(calls).toBe(n);
+  });
+
+  test("snapshot: price chart on Now and the Price view, from the price entity's quarter lists", async () => {
+    const quarters = (base: number) => Array.from({ length: 96 }, (_, i) => base + (i % 8) / 10);
+    const states = {
+      ...eveningStates,
+      "sensor.price": ["1.23", { unit_of_measurement: "SEK/kWh", today: quarters(1), tomorrow: quarters(2) }] as [string, Record<string, unknown>],
+      "sensor.sell": ["0.9", { today: quarters(0.5), tomorrow: [] }] as [string, Record<string, unknown>],
+    };
+    const config = { ...houseConfig, grid: { ...houseConfig.grid!, sell_price: "sensor.sell" } };
+    const card = await mount(config, states);
+    const snap = (await card.snapshotFull())!;
+    expect(snap.prices!.bars).toHaveLength(48);
+    const p = snap.price as Extract<typeof snap.price, { bars: unknown }>;
+    expect(p.title).toBe("Price today and tomorrow");
+    expect(p.bars).toHaveLength(192);
+    expect(p.sell).toHaveLength(192);
+    expect(p.sell[100]).toBeNull(); // no sell price tomorrow
+    expect(p.now).toBeGreaterThanOrEqual(0);
+    expect(p.tiles.map((x) => x.label)).toEqual(["Now", "Today", "Tomorrow", "Cheapest hour", "Cheapest 3 h"]);
+    expect(p.tiles[0].value).toBe(`${(1 + (p.now % 8) / 10).toFixed(2)} SEK/kWh`);
+    expect(p.grid.length).toBeGreaterThan(0);
+  });
+
+  test("Price view: hourly sell under quarter-hour buy still draws a line; negative prices go below zero", async () => {
+    const buyQ = Array.from({ length: 96 }, (_, i) => (i % 8 === 0 ? -0.5 : 1 + (i % 8) / 10));
+    const sellH = Array.from({ length: 24 }, (_, h) => (h === 3 ? -0.2 : 0.8));
+    const states = {
+      ...eveningStates,
+      "sensor.price": ["1.23", { unit_of_measurement: "SEK/kWh", today: buyQ, tomorrow: [] }] as [string, Record<string, unknown>],
+      "sensor.sell": ["0.8", { today: sellH, tomorrow: [] }] as [string, Record<string, unknown>],
+    };
+    const card = await mount({ ...houseConfig, grid: { ...houseConfig.grid!, sell_price: "sensor.sell" } }, states);
+    const p = (await card.snapshotFull())!.price as { sell: (number | null)[]; bars: { f: number }[]; zero: number };
+    expect(p.sell.every((v) => v !== null)).toBe(true);
+    expect(p.sell[12]).toBe(p.sell[13]); // 03:00 and 03:15: the same hourly sell price
+    expect(p.zero).toBeGreaterThan(0);
+    expect(p.bars[0].f).toBeLessThan(p.zero); // -0.50 below the zero line
+    expect(p.sell[12]!).toBeLessThan(p.zero); // -0.20 too
+    expect(p.bars[1].f).toBeGreaterThan(p.zero);
   });
 
   test("all phases share one row, under the fuse label", async () => {
