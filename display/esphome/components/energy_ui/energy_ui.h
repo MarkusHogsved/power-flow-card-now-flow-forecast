@@ -142,6 +142,7 @@ class EnergyUi : public Component {
   lv_obj_t *tab_labels_[VIEWS]{};
   lv_obj_t *tab_icons_[VIEWS]{};
   int view_{0};
+  int before_price_{0};  // where the price box returns to
   std::vector<std::string> running_entities_;
 
   lv_obj_t *fl_src_title_{}, *fl_use_title_{}, *fl_labels_{}, *fl_nothing_{}, *fl_bats_{}, *fl_stats_{};
