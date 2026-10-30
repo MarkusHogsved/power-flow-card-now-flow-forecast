@@ -63,6 +63,9 @@ logger:
   hardware_uart: UART0
 
 api:
+  # The display works without Home Assistant: without this ESPHome restarts it
+  # every 15 min when no API client (HA) is connected
+  reboot_timeout: 0s
 
 ota:
   - platform: esphome
