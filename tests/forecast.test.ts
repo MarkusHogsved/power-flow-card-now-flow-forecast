@@ -220,4 +220,18 @@ describe("price axis and cheapest window", () => {
     expect(cheapestBlock(pts, 2, 2)).toEqual({ index: 3, avg: 2 });
     expect(cheapestBlock(pts, 5, 2)).toBeNull();
   });
+
+  test("cheapestBlock skips runs with a missing period", () => {
+    const at = (h: number) => new Date(2026, 9, 30, h);
+    // 13:00 is missing: 12, 14, 15 must not count as three hours in a row
+    const pts = [
+      { start: at(10), value: 5 },
+      { start: at(11), value: 5 },
+      { start: at(12), value: 1 },
+      { start: at(14), value: 1 },
+      { start: at(15), value: 1 },
+      { start: at(16), value: 4 },
+    ];
+    expect(cheapestBlock(pts, 0, 3)).toEqual({ index: 3, avg: 2 });
+  });
 });

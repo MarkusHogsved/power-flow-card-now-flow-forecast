@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3
+
+- Price view: the cheapest hour / 3 h only count unbroken runs of prices; a
+  missing period no longer gives a window with an unpriced part.
+
 ## 0.6.2
 
 - Snapshot: a Price view - all known prices (today, and tomorrow once
