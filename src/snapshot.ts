@@ -1,4 +1,4 @@
-import { cheapestBlock, currentPriceIndex, peakIndex, readPrices, readUpcomingPrices, sumKwh, type PricePoint } from "./forecast";
+import { cheapestBlock, currentPriceIndex, peakIndex, pricePeriodMs, readPrices, readUpcomingPrices, sumKwh, type PricePoint } from "./forecast";
 import { formatEnergy, formatNumber, formatPercent, formatPower, formatUntil } from "./hass";
 import { COLORS, type Flows, type LoadState, type Model } from "./model";
 import { average, valueAt, type Series } from "./review";
@@ -414,7 +414,7 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
   const cur = currentPriceIndex(buy, now);
   const price = (v: number) => `${formatNumber(hass, v, 2)} ${unit}`;
   const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  const step = buy[1].start.getTime() - buy[0].start.getTime();
+  const step = pricePeriodMs(buy);
   const avg = (list: PricePoint[]) => list.reduce((s, p) => s + p.value, 0) / (list.length || 1);
   // The sell period that holds each buy period (the two may differ in resolution)
   const sellStep = sellPoints.length > 1 ? sellPoints[1].start.getTime() - sellPoints[0].start.getTime() : 3_600_000;
@@ -443,8 +443,7 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
     // From the next period boundary: a window already under way is not on offer in full
     const b = cheapestBlock(buy, cur < 0 ? 0 : now > buy[cur].start ? cur + 1 : cur, hours);
     if (!b) return null;
-    const end = new Date(buy[b.index].start.getTime() + Math.round((hours * 3_600_000) / step) * step);
-    return { label, value: `${hhmm(buy[b.index].start)}–${hhmm(end)}`, sub: t("price.avg", { price: price(b.avg) }) };
+    return { label, value: `${hhmm(buy[b.index].start)}–${hhmm(b.end)}`, sub: t("price.avg", { price: price(b.avg) }) };
   };
   const tiles = [
     cur >= 0

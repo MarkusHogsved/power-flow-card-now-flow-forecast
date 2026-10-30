@@ -236,18 +236,25 @@ export const readUpcomingPrices = (
   return points.slice(first).filter((p) => p.start.getTime() < until);
 };
 
-/** The cheapest run of `hours` from index `from` on: its first index and average, null if too short. */
-export const cheapestBlock = (points: PricePoint[], from: number, hours: number): { index: number; avg: number } | null => {
+/** The period length (ms): the shortest step, so a gap in the list cannot stretch it. */
+export const pricePeriodMs = (points: PricePoint[]): number =>
+  points.length < 2 ? 3_600_000 : Math.min(...points.slice(1).map((p, k) => p.start.getTime() - points[k].start.getTime()));
+
+/** The cheapest unbroken run of `hours` from index `from` on: first index, average and end, null if none. */
+export const cheapestBlock = (
+  points: PricePoint[],
+  from: number,
+  hours: number,
+): { index: number; avg: number; end: Date } | null => {
   if (points.length < 2 || from < 0) return null;
-  // The period length: the shortest step (a gap at the start must not stretch it)
-  const step = Math.min(...points.slice(1).map((p, k) => p.start.getTime() - points[k].start.getTime()));
+  const step = pricePeriodMs(points);
   const n = Math.max(Math.round((hours * 3_600_000) / step), 1);
-  let best: { index: number; avg: number } | null = null;
+  let best: { index: number; avg: number; end: Date } | null = null;
   for (let i = from; i + n <= points.length; i++) {
     // Only unbroken runs: a missing period would leave part of the window unpriced
     if (points[i + n - 1].start.getTime() - points[i].start.getTime() !== (n - 1) * step) continue;
     const avg = points.slice(i, i + n).reduce((s, p) => s + p.value, 0) / n;
-    if (!best || avg < best.avg) best = { index: i, avg };
+    if (!best || avg < best.avg) best = { index: i, avg, end: new Date(points[i].start.getTime() + n * step) };
   }
   return best;
 };

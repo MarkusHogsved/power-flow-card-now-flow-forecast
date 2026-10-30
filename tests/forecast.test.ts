@@ -216,9 +216,15 @@ describe("price axis and cheapest window", () => {
   test("cheapestBlock from a given index", () => {
     const start = new Date(2026, 9, 30, 10).getTime();
     const pts = [5, 1, 3, 2, 2, 9].map((value, i) => ({ start: new Date(start + i * 3_600_000), value }));
-    expect(cheapestBlock(pts, 0, 1)).toEqual({ index: 1, avg: 1 });
-    expect(cheapestBlock(pts, 2, 2)).toEqual({ index: 3, avg: 2 });
+    expect(cheapestBlock(pts, 0, 1)).toMatchObject({ index: 1, avg: 1, end: new Date(start + 2 * 3_600_000) });
+    expect(cheapestBlock(pts, 2, 2)).toMatchObject({ index: 3, avg: 2 });
     expect(cheapestBlock(pts, 5, 2)).toBeNull();
+  });
+
+  test("a gap at the start: the window's end uses the real period length", () => {
+    const at = (h: number) => new Date(2026, 9, 30, h);
+    const pts = [0, 2, 3, 4, 5].map((h) => ({ start: at(h), value: h === 3 ? 1 : 5 }));
+    expect(cheapestBlock(pts, 0, 1)).toMatchObject({ index: 2, end: at(4) });
   });
 
   test("cheapestBlock skips runs with a missing period", () => {
@@ -232,6 +238,6 @@ describe("price axis and cheapest window", () => {
       { start: at(15), value: 1 },
       { start: at(16), value: 4 },
     ];
-    expect(cheapestBlock(pts, 0, 3)).toEqual({ index: 3, avg: 2 });
+    expect(cheapestBlock(pts, 0, 3)).toMatchObject({ index: 3, avg: 2, end: at(17) });
   });
 });
