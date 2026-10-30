@@ -638,12 +638,15 @@ void EnergyUi::apply_price_view_(JsonObject p) {
     lv_obj_t *l = this->text_(this->pv_labels_, this->small_, MUTED, g["label"] | "");
     lv_obj_set_pos(l, 24, PV_Y + (int) y - 10);
   }
+  // Bars from the zero line: negative prices go below it
   float bw = n ? (float) PV_W / n : PV_W;
+  int zero = (int) lroundf(PV_H - (p["zero"] | 0.0f) * PV_H);
   for (size_t i = 0; i < n; i++) {
-    int h = std::max(1, (int) lroundf((bars[i]["f"] | 0.0f) * PV_H));
+    int y = (int) lroundf(PV_H - (bars[i]["f"] | 0.0f) * PV_H);
+    if (y == zero) y = zero - 1;
     int x0 = (int) (bw * i), x1 = std::max(x0 + 1, (int) (bw * (i + 1)) - (bw > 4 ? 1 : 0));
     uint8_t a = (int) i < now ? 60 : (int) i == now ? 255 : 170;
-    c.fill_rect(x0, PV_H - h, x1, PV_H, bars[i]["c"] | 0, a);
+    c.fill_rect(x0, std::min(y, zero), x1, std::max(y, zero), bars[i]["c"] | 0, a);
   }
   float px = -1, py = 0;
   for (size_t i = 0; i < sell.size(); i++) {
@@ -656,7 +659,7 @@ void EnergyUi::apply_price_view_(JsonObject p) {
     px = x;
     py = y;
   }
-  c.fill_rect(0, PV_H - 1, PV_W, PV_H, BORDER, 255);
+  c.fill_rect(0, zero, PV_W, zero + 1, MUTED, 255);
   for (JsonObject t : p["ticks"].as<JsonArray>()) {
     float x = (t["x"] | 0.0f) * PV_W;
     if (t["day"] | false) {

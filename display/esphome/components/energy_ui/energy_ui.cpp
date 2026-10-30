@@ -624,10 +624,12 @@ void EnergyUi::apply_prices_(JsonObject p) {
   JsonArray bars = p["bars"];
   size_t n = bars.size();
   float bw = n ? (float) RIGHT_W / n : RIGHT_W;
+  int zero = (int) lroundf(PRICES_H - (p["zero"] | 0.0f) * PRICES_H);
   for (size_t i = 0; i < n; i++) {
-    int h = std::max(2, (int) lroundf((bars[i]["f"] | 0.0f) * (PRICES_H - 2)));
+    int y = (int) lroundf(PRICES_H - (bars[i]["f"] | 0.0f) * PRICES_H);
+    if (abs(y - zero) < 2) y = zero - 2;
     int x0 = (int) (bw * i), x1 = std::max(x0 + 1, (int) (bw * (i + 1)) - 1);
-    c.fill_rect(x0, PRICES_H - h, x1, PRICES_H, bars[i]["c"] | 0, i == 0 ? 255 : 130);
+    c.fill_rect(x0, std::min(y, zero), x1, std::max(y, zero), bars[i]["c"] | 0, i == 0 ? 255 : 130);
   }
   c.done();
   lv_obj_clean(this->pr_ticks_);

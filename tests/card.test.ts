@@ -449,6 +449,24 @@ describe("card", () => {
     expect(p.grid.length).toBeGreaterThan(0);
   });
 
+  test("Price view: hourly sell under quarter-hour buy still draws a line; negative prices go below zero", async () => {
+    const buyQ = Array.from({ length: 96 }, (_, i) => (i % 8 === 0 ? -0.5 : 1 + (i % 8) / 10));
+    const sellH = Array.from({ length: 24 }, (_, h) => (h === 3 ? -0.2 : 0.8));
+    const states = {
+      ...eveningStates,
+      "sensor.price": ["1.23", { unit_of_measurement: "SEK/kWh", today: buyQ, tomorrow: [] }] as [string, Record<string, unknown>],
+      "sensor.sell": ["0.8", { today: sellH, tomorrow: [] }] as [string, Record<string, unknown>],
+    };
+    const card = await mount({ ...houseConfig, grid: { ...houseConfig.grid!, sell_price: "sensor.sell" } }, states);
+    const p = (await card.snapshotFull())!.price as { sell: (number | null)[]; bars: { f: number }[]; zero: number };
+    expect(p.sell.every((v) => v !== null)).toBe(true);
+    expect(p.sell[12]).toBe(p.sell[13]); // 03:00 and 03:15: the same hourly sell price
+    expect(p.zero).toBeGreaterThan(0);
+    expect(p.bars[0].f).toBeLessThan(p.zero); // -0.50 below the zero line
+    expect(p.sell[12]!).toBeLessThan(p.zero); // -0.20 too
+    expect(p.bars[1].f).toBeGreaterThan(p.zero);
+  });
+
   test("all phases share one row, under the fuse label", async () => {
     const card = await mount(houseConfig);
     const row = root(card).querySelector<HTMLElement>(".phases")!;

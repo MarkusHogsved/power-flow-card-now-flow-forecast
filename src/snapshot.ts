@@ -148,7 +148,7 @@ export const priceSnapshot = (ctx: ViewContext, hours = 12) => {
   const prices = readUpcomingPrices(hass, config.grid?.price, now, hours);
   if (prices.length < 4) return null;
   const values = prices.map((p) => p.value);
-  const max = Math.max(...values, 0.01);
+  const range = priceRange(values, 1);
   const avg = values.reduce((s, v) => s + v, 0) / values.length;
   const unit = m.priceUnit.split("/")[0].trim();
   return {
@@ -158,7 +158,8 @@ export const priceSnapshot = (ctx: ViewContext, hours = 12) => {
       max: formatNumber(hass, Math.max(...values), 2),
       unit: m.priceUnit || unit,
     }),
-    bars: prices.map((p) => ({ f: Math.max(p.value, 0) / max, c: rgb(PRICE_COLORS[priceClass(p.value, avg)]) })),
+    zero: range.zero,
+    bars: prices.map((p) => ({ f: range.f(p.value), c: rgb(PRICE_COLORS[priceClass(p.value, avg)]) })),
     ticks: prices
       .map((p, i) => ({ i, d: p.start }))
       .filter(({ i, d }) => i > 0 && d.getMinutes() === 0 && d.getHours() % 3 === 0)
@@ -375,7 +376,17 @@ export const vehicleSnapshot = (ctx: ViewContext, l: LoadState, h: VehicleHistor
   };
 };
 
-/** A 1/2/2.5/5 x 10^n step for the price axis giving at most five lines up to `max` (kr or öre alike). */
+/**
+ * Price range for a chart with a zero line: always includes 0, so negative
+ * prices go below the line instead of being clipped. `f(v)` = 0..1 from the bottom.
+ */
+export const priceRange = (values: number[], headroom = 1.05) => {
+  const hi = Math.max(...values, 0.01) * headroom;
+  const lo = Math.min(...values, 0) * headroom;
+  const f = (v: number) => (v - lo) / (hi - lo);
+  return { lo, hi, f, zero: f(0) };
+};
+
 /** Decimals that show every multiple of `step` exactly (2.5 -> 1, 0.25 -> 2, 0.0025 -> 4). */
 export const stepDecimals = (step: number): number => {
   let d = 0;
@@ -383,6 +394,7 @@ export const stepDecimals = (step: number): number => {
   return d;
 };
 
+/** A 1/2/2.5/5 x 10^n step for the price axis giving at most five lines up to `max` (kr or öre alike). */
 export const niceStep = (max: number): number => {
   const raw = Math.max(max, 1e-6) / 5;
   const mag = 10 ** Math.floor(Math.log10(raw));
@@ -398,19 +410,27 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
   const buy = readPrices(hass, config.grid?.price, now);
   const unit = m.priceUnit || "";
   if (buy.length < 4) return { title: t("price.title_today"), unavailable: t("price.unavailable") };
-  const sell = new Map(readPrices(hass, config.grid?.sell_price, now).map((p) => [p.start.getTime(), p.value]));
+  const sellPoints = readPrices(hass, config.grid?.sell_price, now);
   const cur = currentPriceIndex(buy, now);
   const price = (v: number) => `${formatNumber(hass, v, 2)} ${unit}`;
   const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
   const step = buy[1].start.getTime() - buy[0].start.getTime();
   const avg = (list: PricePoint[]) => list.reduce((s, p) => s + p.value, 0) / (list.length || 1);
-  const sellValues = buy.map((p) => sell.get(p.start.getTime()) ?? null);
-  const max = Math.max(...buy.map((p) => p.value), ...sellValues.filter((v): v is number => v !== null), 0.01) * 1.05;
+  // The sell period that holds each buy period (the two may differ in resolution)
+  const sellStep = sellPoints.length > 1 ? sellPoints[1].start.getTime() - sellPoints[0].start.getTime() : 3_600_000;
+  const sellValues = buy.map((p) => {
+    const t0 = p.start.getTime();
+    const hit = sellPoints.find((q, k) => q.start.getTime() <= t0 && t0 < (k + 1 < sellPoints.length ? sellPoints[k + 1].start.getTime() : q.start.getTime() + sellStep));
+    return hit ? hit.value : null;
+  });
+  const range = priceRange([...buy.map((p) => p.value), ...sellValues.filter((v): v is number => v !== null)]);
   const allAvg = avg(buy);
-  const gridStep = niceStep(max);
+  const gridStep = niceStep(range.hi - range.lo);
   const grid: { f: number; label: string }[] = [];
   const decimals = stepDecimals(gridStep);
-  for (let v = gridStep; v < max - 1e-9; v += gridStep) grid.push({ f: v / max, label: formatNumber(hass, v, decimals) });
+  for (let v = Math.ceil(range.lo / gridStep) * gridStep; v < range.hi - 1e-9; v += gridStep) {
+    if (Math.abs(v) > 1e-9) grid.push({ f: range.f(v), label: formatNumber(hass, v, decimals) });
+  }
 
   const today = buy.filter((p) => p.start.toDateString() === now.toDateString());
   const tomorrow = buy.filter((p) => p.start.toDateString() !== now.toDateString() && p.start > now);
@@ -446,8 +466,9 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
     title: tomorrow.length ? t("price.title") : t("price.title_today"),
     unavailable: null,
     unit,
-    bars: buy.map((p) => ({ f: Math.max(p.value, 0) / max, c: rgb(PRICE_COLORS[priceClass(p.value, allAvg)]) })),
-    sell: sell.size ? sellValues.map((v) => (v === null ? null : Math.max(v, 0) / max)) : [],
+    zero: range.zero,
+    bars: buy.map((p) => ({ f: range.f(p.value), c: rgb(PRICE_COLORS[priceClass(p.value, allAvg)]) })),
+    sell: sellPoints.length ? sellValues.map((v) => (v === null ? null : range.f(v))) : [],
     now: cur,
     nowX: cur >= 0 ? (cur + (now.getTime() - buy[cur].start.getTime()) / step) / buy.length : -1,
     grid,
@@ -458,7 +479,7 @@ export const priceViewSnapshot = (ctx: ViewContext) => {
     dayLabel: t("price.tomorrow"),
     legend: [
       { label: t("price.buy"), kind: "area" },
-      ...(sell.size ? [{ label: t("price.sell"), kind: "line" }] : []),
+      ...(sellPoints.length ? [{ label: t("price.sell"), kind: "line" }] : []),
     ],
     tiles,
   };
