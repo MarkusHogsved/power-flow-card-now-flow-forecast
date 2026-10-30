@@ -579,10 +579,16 @@ void EnergyUi::apply_review_(JsonObject r) {
 
 static const int PV_X = 64, PV_Y = 34, PV_W = MAIN_W - PV_X - 24, PV_H = 290;
 
+// The price box and the small chart: to Price, and from Price back to the view you came from
 void EnergyUi::to_price_cb(lv_event_t *e) {
   auto *self = static_cast<EnergyUi *>(lv_event_get_user_data(e));
   self->close_overlay_();
-  self->select_(PRICE_VIEW);
+  if (self->view_ == PRICE_VIEW) {
+    self->select_(self->before_price_);
+  } else {
+    self->before_price_ = self->view_;
+    self->select_(PRICE_VIEW);
+  }
 }
 
 void EnergyUi::build_price_() {
