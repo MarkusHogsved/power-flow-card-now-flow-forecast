@@ -16,7 +16,9 @@
 //   GET /status                  states known / in the page, for checking
 //   GET /healthz                 "ok" once connected and rendered
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import http from "node:http";
+import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer";
 
 // Node 22 has WebSocket built in; older versions use the ws package that ships with puppeteer
@@ -138,7 +140,7 @@ const loadCardConfig = async () => {
   return { ...found[CARD_INDEX], view_key: "display" };
 };
 
-const loadCardScript = async () => {
+const loadCardScript = async (quiet = false) => {
   const urls = CARD_URL
     ? [CARD_URL]
     : [
@@ -149,7 +151,7 @@ const loadCardScript = async () => {
     try {
       const res = await fetch(url);
       if (res.ok) {
-        log("card from", url);
+        if (!quiet) log("card from", url);
         return await res.text();
       }
     } catch {
@@ -211,6 +213,8 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8">
 
 let browser;
 let page;
+let cardHash = "";
+const hash = (text) => createHash("sha1").update(text).digest("hex");
 let dirty = true;
 let lastPush = 0;
 // Entities changed since the last push; the page keeps its own copy of the
@@ -264,12 +268,27 @@ const start = async () => {
   connect();
   await ready;
   const [config, script] = await Promise.all([loadCardConfig(), loadCardScript()]);
+  cardHash = hash(script);
   browser = await puppeteer.launch({
     headless: env("HEADLESS", "true") === "shell" ? "shell" : true,
     args: ["--no-sandbox", "--font-render-hinting=none"],
   });
   page = await browser.newPage();
   await page.setViewport({ width: WIDTH, height: HEIGHT });
+  // The card shows clock times and reads local-midnight price lists in the
+  // page's timezone: use Home Assistant's, not the container's (UTC)
+  let timeZone = env("TZ", "");
+  if (!timeZone) {
+    try {
+      timeZone = (await send({ type: "get_config" }))?.time_zone ?? "";
+    } catch (e) {
+      log("could not read Home Assistant's timezone:", e.message);
+    }
+  }
+  if (timeZone) {
+    await page.emulateTimezone(timeZone);
+    log("timezone", timeZone);
+  }
   page.on("pageerror", (e) => log("page error:", e.message));
   await page.exposeFunction("__callWS", (msg) => send(msg));
   await page.setContent(PAGE, { waitUntil: "networkidle0" });
@@ -486,6 +505,33 @@ start()
     console.error(e);
     process.exit(1);
   });
+
+/**
+ * A new card in HACS, or a new renderer on GitHub (RENDERER_URL, how the
+ * compose file starts it): exit, and Docker's restart policy starts the
+ * container again with both. Saves restarting it by hand after each release.
+ */
+const checkForUpdates = async () => {
+  try {
+    const script = await loadCardScript(true);
+    if (cardHash && hash(script) !== cardHash) {
+      log("the card has changed - restarting");
+      process.exit(0);
+    }
+    const url = process.env.RENDERER_URL;
+    if (url) {
+      const res = await fetch(url);
+      const own = readFileSync(fileURLToPath(import.meta.url), "utf8");
+      if (res.ok && hash(await res.text()) !== hash(own)) {
+        log("the renderer has changed - restarting");
+        process.exit(0);
+      }
+    }
+  } catch (e) {
+    log("update check failed:", e.message);
+  }
+};
+setInterval(checkForUpdates, 10 * 60_000);
 
 // Reload the card config now and then, so dashboard edits reach the display
 setInterval(() => {

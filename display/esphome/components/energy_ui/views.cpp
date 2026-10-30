@@ -174,11 +174,12 @@ void EnergyUi::build_flow_() {
   lv_obj_set_size(this->fl_bats_, 328, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(this->fl_bats_, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(this->fl_bats_, 14, 0);
+  // Today's totals as rows under the batteries (tiles were too narrow for "Bought today")
   this->fl_stats_ = plain(v);
-  lv_obj_set_pos(this->fl_stats_, 600, 390);
-  lv_obj_set_size(this->fl_stats_, 328, 80);
-  lv_obj_set_flex_flow(this->fl_stats_, LV_FLEX_FLOW_ROW);
-  lv_obj_set_style_pad_column(this->fl_stats_, 8, 0);
+  lv_obj_set_pos(this->fl_stats_, 600, 330);
+  lv_obj_set_size(this->fl_stats_, 328, LV_SIZE_CONTENT);
+  lv_obj_set_flex_flow(this->fl_stats_, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_style_pad_row(this->fl_stats_, 8, 0);
 }
 
 void EnergyUi::apply_flow_(JsonObject f) {
@@ -246,17 +247,11 @@ void EnergyUi::apply_flow_(JsonObject f) {
   }
   lv_obj_clean(this->fl_stats_);
   for (JsonObject s : f["stats"].as<JsonArray>()) {
-    lv_obj_t *tile = plain(this->fl_stats_);
-    lv_obj_set_size(tile, 104, 72);
-    lv_obj_set_style_bg_color(tile, lv_color_hex(TILE_BG), 0);
-    lv_obj_set_style_bg_opa(tile, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(tile, 12, 0);
-    lv_obj_t *l = this->text_(tile, this->small_, MUTED, s["label"] | "");
-    lv_obj_set_pos(l, 10, 8);
-    lv_obj_set_width(l, 88);
-    lv_label_set_long_mode(l, LV_LABEL_LONG_MODE_DOTS);
-    lv_obj_t *val = this->text_(tile, this->bold_, TEXT, s["value"] | "");
-    lv_obj_set_pos(val, 10, 36);
+    lv_obj_t *row = plain(this->fl_stats_);
+    lv_obj_set_size(row, 328, 28);
+    this->text_(row, this->medium_, MUTED, s["label"] | "");
+    lv_obj_t *val = this->text_(row, this->bold_, TEXT, s["value"] | "");
+    lv_obj_align(val, LV_ALIGN_TOP_RIGHT, 0, 0);
   }
 }
 

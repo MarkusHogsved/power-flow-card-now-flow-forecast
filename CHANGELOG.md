@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.1
+
+- Snapshot: `prices` for Now - the header price for the coming 12 h, from the
+  price entity's `today`/`tomorrow` quarter lists or Nord Pool's
+  `raw_today`/`raw_tomorrow`, as bars coloured cheap / mid / expensive.
+- Native P4 display: that price chart above the phases on Now; Flow shows
+  today's totals as rows (the tiles were too narrow).
+- Renderer: restarts itself when the card in HACS or its own `server.mjs`
+  changes, so a release no longer needs a manual restart.
+- Renderer: runs the card in Home Assistant's timezone (read with
+  `get_config`, or `TZ`). In a UTC container every clock time in the card's
+  texts was an hour off (Review's period, events, solar peak).
+- Price lists with 92 or 100 quarters (daylight-saving days) are placed in
+  real 15-minute steps from midnight.
+
 ## 0.6.0
 
 - New `snapshotFull()`: every view as plain data (Now, Flow with its Sankey

@@ -1,4 +1,4 @@
-import { peakIndex, sumKwh } from "./forecast";
+import { peakIndex, readUpcomingPrices, sumKwh } from "./forecast";
 import { formatEnergy, formatNumber, formatPercent, formatPower, formatUntil } from "./hass";
 import { COLORS, type Flows, type LoadState, type Model } from "./model";
 import { average, valueAt, type Series } from "./review";
@@ -127,6 +127,7 @@ export const nowSnapshot = (ctx: ViewContext) => {
           ...m.loads.map((l) => ({ name: l.name, text: formatPower(hass, l.powerW) })),
         ]
       : [],
+    prices: priceSnapshot(ctx),
     phases: m.phases.map((p) => ({
       name: p.name,
       text: p.amps === null ? "–" : `${formatNumber(hass, Math.abs(p.amps), 1)} A`,
@@ -136,6 +137,34 @@ export const nowSnapshot = (ctx: ViewContext) => {
 };
 
 export type NowSnapshot = ReturnType<typeof nowSnapshot>;
+
+/**
+ * The header price for the coming hours, for a small chart on Now: bars as a
+ * share of the highest price, coloured cheap / mid / expensive against the
+ * average of the shown hours (as Review).
+ */
+export const priceSnapshot = (ctx: ViewContext, hours = 12) => {
+  const { hass, config, model: m, now } = ctx;
+  const prices = readUpcomingPrices(hass, config.grid?.price, now, hours);
+  if (prices.length < 4) return null;
+  const values = prices.map((p) => p.value);
+  const max = Math.max(...values, 0.01);
+  const avg = values.reduce((s, v) => s + v, 0) / values.length;
+  const unit = m.priceUnit.split("/")[0].trim();
+  return {
+    title: t("now.prices", { hours: String(Math.round((prices.length * (prices[1].start.getTime() - prices[0].start.getTime())) / 3_600_000)) }),
+    range: t("now.prices_range", {
+      min: formatNumber(hass, Math.min(...values), 2),
+      max: formatNumber(hass, Math.max(...values), 2),
+      unit: m.priceUnit || unit,
+    }),
+    bars: prices.map((p) => ({ f: Math.max(p.value, 0) / max, c: rgb(PRICE_COLORS[priceClass(p.value, avg)]) })),
+    ticks: prices
+      .map((p, i) => ({ i, d: p.start }))
+      .filter(({ i, d }) => i > 0 && d.getMinutes() === 0 && d.getHours() % 3 === 0)
+      .map(({ i, d }) => ({ x: i / prices.length, label: String(d.getHours()).padStart(2, "0") })),
+  };
+};
 
 // ---------------------------------------------------------------- Other views
 

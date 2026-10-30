@@ -163,3 +163,65 @@ export const vehicleByHour = (
 
 export const peakIndex = (hours: ForecastHour[]): number =>
   hours.reduce((best, h, i) => (h.kwh > hours[best].kwh ? i : best), 0);
+
+export interface PricePoint {
+  start: Date;
+  value: number;
+}
+
+/**
+ * Prices from now on, per quarter or hour as the entity gives them, at most
+ * `hours` ahead. Reads `today`/`tomorrow` lists of numbers (96 quarters from
+ * local midnight, as sensor.elpris_kop_nu) or Nord Pool's
+ * `raw_today`/`raw_tomorrow` ({start, value} entries).
+ */
+export const readUpcomingPrices = (
+  hass: HomeAssistant,
+  entityId: string | undefined,
+  now: Date,
+  hours = 12,
+): PricePoint[] => {
+  const attrs = entityId ? hass.states[entityId]?.attributes : undefined;
+  if (!attrs) return [];
+  const points: PricePoint[] = [];
+  const day = (offset: number, list: unknown) => {
+    if (!Array.isArray(list) || !list.length) return;
+    if (typeof list[0] === "number") {
+      const midnight = new Date(now);
+      midnight.setDate(midnight.getDate() + offset);
+      midnight.setHours(0, 0, 0, 0);
+      list.forEach((v, i) => {
+        let start: Date;
+        if (list.length === 96 || list.length === 24) {
+          // Wall clock (as nordpool_kvart): quarter/hour i of the local day
+          start = new Date(midnight);
+          start.setHours(0, (i * 24 * 60) / list.length, 0, 0);
+        } else {
+          // A daylight-saving day (92/100 quarters or 23/25 hours): real steps from midnight
+          const step = list.length <= 25 ? 60 : 15;
+          start = new Date(midnight.getTime() + i * step * 60_000);
+        }
+        if (Number.isFinite(v)) points.push({ start, value: v as number });
+      });
+    } else {
+      for (const p of list as { start?: string; value?: number }[]) {
+        const start = new Date(p.start ?? "");
+        if (!Number.isNaN(start.getTime()) && Number.isFinite(p.value)) points.push({ start, value: p.value as number });
+      }
+    }
+  };
+  // Explicit timestamps first (Nord Pool), else the plain lists
+  if (Array.isArray(attrs.raw_today) && attrs.raw_today.length) {
+    day(0, attrs.raw_today);
+    day(1, attrs.raw_tomorrow);
+  } else {
+    day(0, attrs.today);
+    day(1, attrs.tomorrow);
+  }
+  points.sort((a, b) => a.start.getTime() - b.start.getTime());
+  // From the period that holds now
+  const first = points.findIndex((p, i) => i + 1 >= points.length || points[i + 1].start > now);
+  if (first < 0) return [];
+  const until = points[first].start.getTime() + hours * 3_600_000;
+  return points.slice(first).filter((p) => p.start.getTime() < until);
+};
