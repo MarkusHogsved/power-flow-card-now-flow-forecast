@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+
+- The tabs always share one row, however many views the card has (five no
+  longer wrap onto a second row in a narrow column).
+
 ## 0.7.0
 
 - New view **Price**: today's prices (and tomorrow's once published) per

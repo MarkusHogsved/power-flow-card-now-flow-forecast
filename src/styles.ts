@@ -79,7 +79,9 @@ export const styles = css`
   }
   .tabs {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* One row whatever the number of views (views: picks them) */
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 4px;
     padding: 4px;
     border-radius: 12px;
@@ -87,6 +89,10 @@ export const styles = css`
   }
   .tabs button {
     height: 40px;
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     border: none;
     border-radius: 9px;
     background: transparent;
