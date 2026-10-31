@@ -187,20 +187,27 @@ export const forecastData = (ctx: ViewContext) => {
   let worst = level;
   let plannedInTime = 0;
   let runOut: Date | null = null;
+  // Level at the start of each hour and that hour's need, for sizing a suggestion
+  const startLevel: number[] = [];
+  const needs: number[] = [];
   for (let i = 0; i < horizon; i++) {
+    startLevel.push(level);
     plannedInTime += chargeLayer?.[i] ?? 0;
     // The hour now running counts only for the part still ahead (Codex #35)
     const hourEnd = hours[i].start.getTime() + 3_600_000;
     const ahead = Math.min(Math.max((hourEnd - now.getTime()) / 3_600_000, 0), 1);
     const need = Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0) * ahead;
-    const before = level + (chargeLayer?.[i] ?? 0);
-    level = Math.min(before - need, room);
+    needs.push(need);
+    const charge = chargeLayer?.[i] ?? 0;
+    const start = level;
+    level = Math.min(start + charge - need, room);
     worst = Math.min(worst, level);
     if (level < 0 && runOut === null) {
-      // Part way into the hour, when what was left is used up
+      // Part way into the hour, at the net rate: charging arrives over the hour too (Codex #35)
       const from = Math.max(hours[i].start.getTime(), now.getTime());
-      const frac = need > 0 ? Math.min(Math.max(before / need, 0), 1) : 0;
-      runOut = new Date(from + frac * (hours[i].start.getTime() + 3_600_000 - from));
+      const net = need - charge;
+      const frac = net > 0 ? Math.min(Math.max(start / net, 0), 1) : 0;
+      runOut = new Date(from + frac * (hourEnd - from));
     }
   }
   const verdict =
@@ -217,7 +224,10 @@ export const forecastData = (ctx: ViewContext) => {
   // Short and nothing (enough) planned: when the batteries run out, and the
   // cheapest grid charging that fits before then - a suggestion, not a plan
   const missing = verdict && !verdict.ok ? (plannedInTime > 0.5 ? -worst : demand - (usable ?? 0)) : 0;
-  let suggestion: { runOut: Date; kwh: number; start: Date; end: Date; price: string } | { runOut: Date; kwh: number; start: null } | null = null;
+  let suggestion:
+    | { runOut: Date; kwh: number; later: number; start: Date; end: Date; price: string }
+    | { runOut: Date; kwh: number; later: number; start: null }
+    | null = null;
   if (missing > 0.5 && runOut) {
     const prices = readPrices(hass, config.grid?.price, now);
     const step = pricePeriodMs(prices);
@@ -225,20 +235,38 @@ export const forecastData = (ctx: ViewContext) => {
     const cur = currentPriceIndex(fits, now);
     const from = cur < 0 ? 0 : now > fits[cur].start ? cur + 1 : cur;
     const kw = m.batteries.reduce((sum, b) => sum + (b.maxChargeKw ?? 0), 0);
-    // Whole price periods, rounded up, so the block can deliver what it says (Codex #35)
+    // Whole price periods, rounded up, so the block can deliver what it says (Codex #35);
+    // never more than the batteries can take
     const stepH = step / 3_600_000;
-    const needH = (kw > 0 ? Math.ceil(missing / kw / stepH - 1e-9) : Math.ceil(1 / stepH)) * stepH;
+    const sized = Math.min(missing, room);
+    const needH = (kw > 0 ? Math.ceil(sized / kw / stepH - 1e-9) : Math.ceil(1 / stepH)) * stepH;
     const b = fits.length ? cheapestBlock(fits, from, needH) : null;
     const unit = String(hass.states[config.grid?.price ?? ""]?.attributes?.unit_of_measurement ?? "");
-    suggestion = b
-      ? {
-          runOut,
-          kwh: missing,
-          start: fits[b.index].start,
-          end: b.end,
-          price: `${formatNumber(hass, b.avg, 2)}${unit ? ` ${unit}` : ""}`,
-        }
-      : { runOut, kwh: missing, start: null };
+    if (b) {
+      // What fits in the batteries during the block: room above the level at its
+      // start plus what the home uses meanwhile (Codex #35)
+      const start = fits[b.index].start.getTime();
+      const end = b.end.getTime();
+      let atStart = usable ?? 0;
+      let during = 0;
+      hours.slice(0, horizon).forEach((h, i) => {
+        const a = h.start.getTime();
+        if (a + 3_600_000 <= start) atStart = startLevel[i + 1] ?? level;
+        const overlap = Math.min(a + 3_600_000, end) - Math.max(a, start, now.getTime());
+        if (overlap > 0) during += (needs[i] * overlap) / Math.max(a + 3_600_000 - Math.max(a, now.getTime()), 1);
+      });
+      const kwh = Math.min(missing, Math.max(room - Math.max(atStart, 0) + during, 0), kw > 0 ? kw * ((end - start) / 3_600_000) : missing);
+      suggestion = {
+        runOut,
+        kwh,
+        later: missing - kwh > 0.5 ? missing - kwh : 0,
+        start: fits[b.index].start,
+        end: b.end,
+        price: `${formatNumber(hass, b.avg, 2)}${unit ? ` ${unit}` : ""}`,
+      };
+    } else {
+      suggestion = { runOut, kwh: missing, later: 0, start: null };
+    }
   }
   const at = (d: Date) => {
     const u = formatUntil(hass, d, now);
@@ -363,7 +391,9 @@ export const renderForecast = (ctx: ViewContext) => {
                                 ? html`${t("last.suggest", { from: at(suggestion.start), to: at(suggestion.end) })}<br />${t(
                                       "last.suggest_sub",
                                       { runout: at(suggestion.runOut), price: suggestion.price },
-                                    )}`
+                                    )}${suggestion.later > 0
+                                      ? html`<br />${t("last.suggest_later", { energy: formatEnergy(hass, suggestion.later) })}`
+                                      : nothing}`
                                 : t("last.runout", { runout: at(suggestion.runOut) })}
                             </span>
                             <b style="color: ${COLORS.battery}">~${formatEnergy(hass, suggestion.kwh)}</b>

@@ -283,7 +283,10 @@ export const forecastSnapshot = (ctx: ViewContext) => {
     suggestion: sug
       ? {
           label: sug.start ? t("last.suggest", { from: d.at(sug.start), to: d.at(sug.end) }) : t("last.runout", { runout: d.at(sug.runOut) }),
-          sub: sug.start ? t("last.suggest_sub", { runout: d.at(sug.runOut), price: sug.price }) : null,
+          sub: sug.start
+            ? t("last.suggest_sub", { runout: d.at(sug.runOut), price: sug.price }) +
+              (sug.later > 0 ? ` · ${t("last.suggest_later", { energy: formatEnergy(hass, sug.later) })}` : "")
+            : null,
           value: `~${formatEnergy(hass, sug.kwh)}`,
           color: rgb(COLORS.battery),
         }

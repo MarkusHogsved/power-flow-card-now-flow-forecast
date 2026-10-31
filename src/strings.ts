@@ -120,6 +120,7 @@ const en = {
   "last.charge_none": "No grid charging planned",
   "last.suggest": "Cheapest charging before then: {from}-{to}",
   "last.suggest_sub": "batteries empty ~{runout} · avg {price}",
+  "last.suggest_later": "fills the batteries - ~{energy} more from the grid later",
   "last.runout": "Batteries empty ~{runout}, no prices known before then",
   "forecast.axis": "{value} kWh",
   "last.no_capacity": "Set capacity_kwh on a battery to see if it lasts.",
