@@ -281,6 +281,55 @@ describe("card", () => {
     expect(root(card).textContent).not.toContain("kWh car");
   });
 
+  test("Forecast shows the solar forecast and the planned grid charging: when and how much", async () => {
+    const now = new Date();
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    const at = (h: number) => new Date(hourStart.getTime() + h * 3_600_000);
+    const forecast = Array.from({ length: 24 }, (_, i) => ({ period_start: at(i).toISOString(), kwh: 2, kwh_p10: 1.5, kwh_p90: 3 }));
+    // Solcast half-hours: 4 kW (P50) in hours 3-5 from now, nothing else
+    const periods = Array.from({ length: 96 }, (_, i) => {
+      const start = new Date(hourStart.getTime() + (i - 48) * 1_800_000);
+      const h = (start.getTime() - hourStart.getTime()) / 3_600_000;
+      const on = h >= 3 && h < 6;
+      return { period_start: start.toISOString(), pv_estimate: on ? 4 : 0, pv_estimate10: on ? 2 : 0, pv_estimate90: on ? 6 : 0 };
+    });
+    const states = {
+      ...eveningStates,
+      "sensor.loadcast": ["48", { forecast }],
+      "sensor.solcast_a": ["0", { detailedForecast: periods.slice(0, 48) }],
+      "sensor.solcast_b": ["0", { detailedForecast: periods.slice(48) }],
+      "sensor.plan": [
+        "22",
+        { windows: [{ start: at(6).toISOString(), end: at(9).toISOString(), kwh: 22, target_soc: 80, name: "Night charging" }] },
+      ],
+    } as typeof eveningStates;
+    const config = {
+      ...houseConfig,
+      default_view: "forecast" as const,
+      solar: { ...houseConfig.solar!, forecast_entities: ["sensor.solcast_a", "sensor.solcast_b"] },
+      battery_plan: "sensor.plan",
+    };
+    let card = await mount(config, states);
+    let text = root(card).textContent?.replace(/\s+/g, " ") ?? "";
+    // 3 h × 4 kW P50
+    expect(text).toContain("Solar, next 24 h ~12 kWh");
+    expect(text).toContain("+ 22 kWh battery charging");
+    expect(text).toMatch(/Grid charging (tomorrow )?\d{1,2}[:.]\d\d/);
+    expect(text).toMatch(/Night charging · to 80\s?%/);
+    expect(text).toContain("~22 kWh");
+    // two charts: demand (band, charging, line) and solar (band, area, line)
+    expect(root(card).querySelectorAll("svg.chart")).toHaveLength(2);
+    expect(root(card).querySelectorAll("svg.chart path")).toHaveLength(6);
+
+    // A plan entity with no windows says so
+    states["sensor.plan"] = ["0", { windows: [] }];
+    card = await mount(config, states);
+    text = root(card).textContent?.replace(/\s+/g, " ") ?? "";
+    expect(text).toContain("No grid charging planned");
+    expect(text).not.toContain("battery charging");
+  });
+
   test("Forecast without LoadCast data says so instead of breaking", async () => {
     const card = await mount({ ...houseConfig, default_view: "forecast" });
     expect(root(card).textContent).toContain("No LoadCast forecast available.");

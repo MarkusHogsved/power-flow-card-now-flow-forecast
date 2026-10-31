@@ -5,7 +5,7 @@
 import { readLoadCast, readLoadCastPast } from "./forecast";
 import { formatEnergy, formatPercent, formatPower, readNumber } from "./hass";
 import { buildReviewInput, powerSeries, reviewEntities } from "./history";
-import { COLORS, LOAD_PALETTE } from "./model";
+import { COLORS } from "./model";
 import { average, extreme, integrate, valueAt, type Series } from "./review";
 import { t } from "./strings";
 import type { CardConfig, HomeAssistant } from "./types";
@@ -183,7 +183,7 @@ export const nodeDetails = (hass: HomeAssistant, config: CardConfig, h: DetailHi
       title: t("detail.home"),
       color: 0xf2f2f2,
       // Not white like the bars: the forecast has to stand out from them
-      forecastColor: rgb(LOAD_PALETTE[0]),
+      forecastColor: rgb(COLORS.demand),
       series: buckets(s, start, step),
       forecast: forecast.some((v) => v !== null) ? forecast : null,
       soc: null,

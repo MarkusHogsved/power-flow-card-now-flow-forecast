@@ -152,6 +152,8 @@ class EnergyUi : public Component {
   lv_obj_t *fc_title_{}, *fc_total_{}, *fc_plus_{}, *fc_labels_{}, *fc_band_{}, *fc_unavailable_{};
   lv_obj_t *fc_last_title_{}, *fc_rows_{}, *fc_tomorrow_{}, *fc_tomorrow_label_{}, *fc_tomorrow_value_{};
   Canvas fc_canvas_;
+  lv_obj_t *fc_solar_title_{}, *fc_solar_total_{}, *fc_solar_note_{}, *fc_solar_labels_{};
+  Canvas fc_solar_canvas_;
   std::string fc_key_;
 
   lv_obj_t *rv_period_{}, *rv_message_{}, *rv_headline_{}, *rv_sub_{}, *rv_tiles_{}, *rv_ticks_{}, *rv_legend_{};

@@ -102,6 +102,7 @@ fuse_current: 25
 loadcast:
   forecast: sensor.loadcast_forecast_next_24_h
   error: sensor.loadcast_forecast_error_yesterday
+battery_plan: sensor.home_battery_charge_plan
 ```
 
 ### Options
@@ -141,6 +142,7 @@ loadcast:
 | `fuse_current` | Main fuse in A, default 25. |
 | `loadcast.forecast` | LoadCast *forecast next 24 h* sensor (attribute `forecast`). Also gives *~x kWh more* under the grid node in Now: grid energy still expected before midnight (see below). |
 | `loadcast.error` | LoadCast *forecast error yesterday* sensor (%). |
+| `battery_plan` | Planned grid charging of the home batteries: an entity whose attribute `windows` lists `{start, end, kwh, target_soc, name}` (ISO times; `kwh`, `target_soc` and `name` optional). Forecast stacks the energy on the demand chart, lists each window (when, how much, to what level) and counts it in *Will the battery last?*. With the entity but no windows it says *No grid charging planned*. |
 
 Clicking a node, battery, load or tile opens Home Assistant's more-info
 dialog for that entity.

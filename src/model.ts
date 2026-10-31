@@ -13,6 +13,8 @@ export const COLORS = {
   battery: "#4FC1B0",
   batteryLow: "#E0A93B",
   home: "var(--primary-text-color, #ECEFF2)",
+  /** LoadCast's home demand forecast (line and band). */
+  demand: "#B39DF0",
 };
 
 /** Palette for large loads without their own color, in config order. */

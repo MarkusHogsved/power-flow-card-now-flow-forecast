@@ -205,7 +205,7 @@ export const forecastSnapshot = (ctx: ViewContext) => {
       label: d.takeover !== null ? t("last.demand_until", { hour: `${hh(d.hours[d.takeover].start)}:00` }) : t("last.demand_24h"),
       sub: null,
       value: `~${formatEnergy(hass, d.homeDemand)}`,
-      color: 0xf2f2f2,
+      color: rgb(COLORS.demand),
       frac: d.homeDemand / d.scale,
     },
     ...d.vehicles.map((x) => ({
@@ -222,21 +222,45 @@ export const forecastSnapshot = (ctx: ViewContext) => {
   ];
   if (d.usable !== null) {
     rows.push({ label: t("last.usable"), sub: null, value: formatEnergy(hass, d.usable), color: rgb(COLORS.battery), frac: d.usable / d.scale });
+    for (const w of d.charges ?? []) {
+      rows.push({
+        label: t("last.charge", { from: d.at(w.start), to: d.at(w.end) }),
+        sub:
+          w.name || w.targetSoc !== null
+            ? t("last.charge_to", { name: w.name, soc: w.targetSoc !== null ? formatPercent(hass, w.targetSoc) : "?" })
+            : null,
+        value: w.kwh !== null ? `~${formatEnergy(hass, w.kwh)}` : "?",
+        color: rgb(COLORS.battery),
+        frac: null,
+      });
+    }
+    if (d.charges && !d.charges.length) {
+      rows.push({ label: t("last.charge_none"), sub: null, value: "", color: rgb(COLORS.battery), frac: null });
+    }
   }
   return {
     title: t("forecast.title"),
     unavailable: null,
     tomorrow,
     total: `~${formatEnergy(hass, sumKwh(d.hours))}`,
-    plus: d.evTotal > 0 ? t("forecast.plus_vehicle", { energy: formatEnergy(hass, d.evTotal) }) : null,
+    plus:
+      [
+        d.evTotal > 0 ? t("forecast.plus_vehicle", { energy: formatEnergy(hass, d.evTotal) }) : null,
+        d.plannedKwh > 0.5 ? t("forecast.plus_charge", { energy: formatEnergy(hass, d.plannedKwh) }) : null,
+      ]
+        .filter((x) => x)
+        .join(" ") || null,
     plusColor: d.vehicles.length ? rgb(d.vehicles[0].v.color) : 0,
     evColor: d.evLayer ? rgb(d.evLayer.color) : 0,
+    demandColor: rgb(COLORS.demand),
+    chargeColor: rgb(COLORS.battery),
     hours: d.hours.map((h, i) => ({
       label: hh(h.start),
       kwh: h.kwh,
       p10: h.p10,
       p90: h.p90,
       ev: d.evLayer?.kwh[i] ?? 0,
+      charge: d.chargeLayer?.[i] ?? 0,
       tick: i > 1 && h.start.getHours() % 6 === 0,
     })),
     nowLabel: t("forecast.now"),
@@ -245,13 +269,17 @@ export const forecastSnapshot = (ctx: ViewContext) => {
     band: `${t("forecast.band")}${d.error !== null ? ` · ${t("forecast.error", { value: `${formatNumber(hass, d.error, 1)} %` })}` : ""}`,
     lastTitle: t("last.title"),
     rows,
-    verdict:
-      d.usable === null
-        ? null
-        : d.usable >= d.demand
-          ? t("last.covered", { margin: formatEnergy(hass, d.usable - d.demand) })
-          : t("last.short", { missing: formatEnergy(hass, d.demand - d.usable) }),
-    verdictOk: d.usable !== null && d.usable >= d.demand,
+    verdict: d.verdict?.text ?? null,
+    verdictOk: d.verdict?.ok ?? false,
+    solar: d.solar
+      ? {
+          title: t("forecast.solar_title"),
+          total: `~${formatEnergy(hass, d.solarTotal as number)}`,
+          color: rgb(COLORS.solar),
+          note: (d.solarTotal as number) > 0.05 ? t("forecast.solar_band") : t("forecast.solar_none"),
+          hours: (d.solarTotal as number) > 0.05 ? d.solar.map((x) => ({ p10: x.p10, p50: x.p50, p90: x.p90 })) : [],
+        }
+      : null,
     note: d.usable === null ? t("last.no_capacity") : null,
   };
 };
