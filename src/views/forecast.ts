@@ -240,7 +240,10 @@ export const forecastData = (ctx: ViewContext) => {
     const stepH = step / 3_600_000;
     const sized = Math.min(missing, room);
     const needH = (kw > 0 ? Math.ceil(sized / kw / stepH - 1e-9) : Math.ceil(1 / stepH)) * stepH;
-    const b = fits.length ? cheapestBlock(fits, from, needH) : null;
+    // Not enough time before run-out for the whole block: the longest that fits,
+    // the rest is bought later (Codex #35)
+    const availH = Math.max(fits.length - from, 0) * stepH;
+    const b = availH > 0 ? cheapestBlock(fits, from, Math.min(needH, availH)) : null;
     const unit = String(hass.states[config.grid?.price ?? ""]?.attributes?.unit_of_measurement ?? "");
     if (b) {
       // What fits in the batteries during the block: room above the level at its

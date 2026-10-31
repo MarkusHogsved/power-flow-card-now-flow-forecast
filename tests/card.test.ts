@@ -393,6 +393,14 @@ describe("card", () => {
     // 53 kWh short but only ~45 kWh fit during the block (54 kWh room, ~31 kWh
     // left at its start, ~22 kWh used meanwhile): the rest is bought later
     expect(text).toMatch(/fills the batteries - ~\d+(\.\d)? kWh more from the grid later/);
+    // Too little time before run-out for the whole block: the longest that fits
+    // is suggested instead of "no prices" (Codex #35)
+    const slow = { ...config, batteries: [{ ...houseConfig.batteries![0], max_charge_kw: 1 }, ...houseConfig.batteries!.slice(1)] };
+    const card2 = await mount(slow, states);
+    const text2 = root(card2).textContent?.replace(/\s+/g, " ") ?? "";
+    expect(text2).toContain("Cheapest charging before then");
+    expect(text2).not.toContain("no prices known");
+    expect(text2).toContain("more from the grid later");
     // grid lines carry their value
     expect(text).toMatch(/\d+(\.\d+)? kWh/);
     expect(root(card).querySelectorAll("svg.chart line[stroke-dasharray]").length).toBeGreaterThan(0);
