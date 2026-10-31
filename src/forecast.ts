@@ -82,6 +82,91 @@ export const readSolarP10ByHour = (hass: HomeAssistant, entityIds: string[] | un
   return byHour;
 };
 
+export interface SolarHour {
+  p10: number;
+  p50: number;
+  p90: number;
+}
+
+interface RawSolcastBand {
+  period_start?: string;
+  pv_estimate?: number;
+  pv_estimate10?: number;
+  pv_estimate90?: number;
+}
+
+/** Solcast P10/P50/P90 energy (kWh) per hour start (ms), for the solar chart. */
+export const readSolarByHour = (hass: HomeAssistant, entityIds: string[] | undefined): Map<number, SolarHour> => {
+  const byHour = new Map<number, SolarHour>();
+  for (const id of entityIds ?? []) {
+    const periods = hass.states[id]?.attributes?.detailedForecast;
+    if (!Array.isArray(periods)) continue;
+    const list = periods as RawSolcastBand[];
+    const step = list.length > 30 ? 0.5 : 1;
+    for (const p of list) {
+      const start = new Date(p.period_start ?? "");
+      const p50 = Number(p.pv_estimate);
+      if (Number.isNaN(start.getTime()) || !Number.isFinite(p50)) continue;
+      const p10 = Number.isFinite(Number(p.pv_estimate10)) ? Number(p.pv_estimate10) : p50;
+      const p90 = Number.isFinite(Number(p.pv_estimate90)) ? Number(p.pv_estimate90) : p50;
+      start.setMinutes(0, 0, 0);
+      const h = byHour.get(start.getTime()) ?? { p10: 0, p50: 0, p90: 0 };
+      byHour.set(start.getTime(), { p10: h.p10 + p10 * step, p50: h.p50 + p50 * step, p90: h.p90 + p90 * step });
+    }
+  }
+  return byHour;
+};
+
+/** A planned grid charging window for the home batteries. */
+export interface ChargeWindow {
+  start: Date;
+  end: Date;
+  /** Energy expected from the grid (kWh), null when unknown. */
+  kwh: number | null;
+  targetSoc: number | null;
+  name: string;
+}
+
+/**
+ * Planned battery charging from an entity whose attribute `windows` lists
+ * `{start, end, kwh?, target_soc?, name?}` (ISO times). Windows that have
+ * ended are left out; sorted by start.
+ */
+export const readChargePlan = (hass: HomeAssistant, entityId: string | undefined, now: Date): ChargeWindow[] => {
+  const raw = entityId ? hass.states[entityId]?.attributes?.windows : undefined;
+  if (!Array.isArray(raw)) return [];
+  const num = (v: unknown) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  return (raw as { start?: string; end?: string; kwh?: unknown; target_soc?: unknown; name?: string }[])
+    .map((w) => ({
+      start: new Date(w.start ?? ""),
+      end: new Date(w.end ?? ""),
+      kwh: num(w.kwh),
+      targetSoc: num(w.target_soc),
+      name: String(w.name ?? ""),
+    }))
+    .filter((w) => !Number.isNaN(w.start.getTime()) && !Number.isNaN(w.end.getTime()) && w.end > w.start && w.end > now)
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+};
+
+/**
+ * Planned grid charging per forecast hour: each window's energy spread evenly
+ * over its remaining time (from now), so a window in progress shows what is
+ * left of it.
+ */
+export const chargeByHour = (hours: ForecastHour[], windows: ChargeWindow[], now: Date): number[] =>
+  hours.map((h) => {
+    const a = h.start.getTime();
+    const b = a + 3_600_000;
+    return windows.reduce((sum, w) => {
+      if (w.kwh === null || w.kwh <= 0) return sum;
+      const from = Math.max(w.start.getTime(), now.getTime());
+      const to = w.end.getTime();
+      if (to <= from) return sum;
+      const overlap = Math.min(b, to) - Math.max(a, from);
+      return overlap > 0 ? sum + (w.kwh * overlap) / (to - from) : sum;
+    }, 0);
+  });
+
 /**
  * Index of the first hour after now where solar P10 covers that hour's
  * forecast demand - from then on the batteries are no longer drained. null

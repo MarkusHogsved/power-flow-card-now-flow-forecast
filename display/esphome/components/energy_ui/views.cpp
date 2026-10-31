@@ -258,6 +258,9 @@ void EnergyUi::apply_flow_(JsonObject f) {
 // ---------------------------------------------------------------- Forecast
 
 static const int FC_W = MAIN_W - 48, FC_H = 170, FC_Y = 50;
+// Solar chart under the demand chart; "Will the battery last?" moves below it
+static const int SO_Y = 286, SO_H = 120, SO_CHART_Y = SO_Y + 34;
+static const int LAST_Y_SOLAR = SO_CHART_Y + SO_H + 60, LAST_Y_PLAIN = 286;
 
 void EnergyUi::build_forecast_() {
   lv_obj_t *v = plain(this->main_);
@@ -279,17 +282,27 @@ void EnergyUi::build_forecast_() {
   this->fc_unavailable_ = this->text_(v, this->medium_, MUTED, "");
   lv_obj_set_pos(this->fc_unavailable_, 24, FC_Y);
 
+  this->fc_solar_title_ = this->text_(v, this->medium_, MUTED, "");
+  lv_obj_set_pos(this->fc_solar_title_, 24, SO_Y);
+  this->fc_solar_total_ = this->text_(v, this->bold_, TEXT, "");
+  lv_obj_align(this->fc_solar_total_, LV_ALIGN_TOP_RIGHT, -24, SO_Y - 4);
+  this->fc_solar_canvas_.create(v, 24, SO_CHART_Y, FC_W, SO_H);
+  this->fc_solar_labels_ = plain(v);
+  lv_obj_set_size(this->fc_solar_labels_, MAIN_W, SO_CHART_Y + SO_H + 30);
+  this->fc_solar_note_ = this->text_(v, this->small_, MUTED, "");
+  lv_obj_set_pos(this->fc_solar_note_, 24, SO_CHART_Y + SO_H + 26);
+
   this->fc_last_title_ = this->text_(v, this->medium_, MUTED, "");
-  lv_obj_set_pos(this->fc_last_title_, 24, 286);
+  lv_obj_set_pos(this->fc_last_title_, 24, LAST_Y_PLAIN);
   this->fc_rows_ = plain(v);
-  lv_obj_set_pos(this->fc_rows_, 24, 318);
+  lv_obj_set_pos(this->fc_rows_, 24, LAST_Y_PLAIN + 32);
   lv_obj_set_size(this->fc_rows_, 600, LV_SIZE_CONTENT);
   lv_obj_set_flex_flow(this->fc_rows_, LV_FLEX_FLOW_COLUMN);
   lv_obj_set_style_pad_row(this->fc_rows_, 12, 0);
   lv_obj_set_style_pad_bottom(this->fc_rows_, 16, 0);
 
   this->fc_tomorrow_ = plain(v);
-  lv_obj_set_pos(this->fc_tomorrow_, 650, 286);
+  lv_obj_set_pos(this->fc_tomorrow_, 650, LAST_Y_PLAIN);
   lv_obj_set_size(this->fc_tomorrow_, 270, 76);
   lv_obj_set_style_bg_color(this->fc_tomorrow_, lv_color_hex(TILE_BG), 0);
   lv_obj_set_style_bg_opa(this->fc_tomorrow_, LV_OPA_COVER, 0);
@@ -319,6 +332,17 @@ void EnergyUi::apply_forecast_(JsonObject f) {
   show(this->fc_last_title_, !unavailable);
   show(this->fc_rows_, !unavailable);
   lv_obj_clean(this->fc_labels_);
+  lv_obj_clean(this->fc_solar_labels_);
+  JsonObject solar = f["solar"];
+  bool has_solar = !unavailable && !solar.isNull();
+  show(this->fc_solar_title_, has_solar);
+  show(this->fc_solar_total_, has_solar);
+  show(this->fc_solar_note_, has_solar);
+  show(this->fc_solar_canvas_.obj, has_solar && solar["hours"].as<JsonArray>().size() > 0);
+  int last_y = has_solar ? LAST_Y_SOLAR : LAST_Y_PLAIN;
+  lv_obj_set_pos(this->fc_last_title_, 24, last_y);
+  lv_obj_set_pos(this->fc_rows_, 24, last_y + 32);
+  lv_obj_set_pos(this->fc_tomorrow_, 650, last_y);
   if (unavailable) {
     set_text(this->fc_total_, "");
     set_text(this->fc_plus_, "");
@@ -339,26 +363,28 @@ void EnergyUi::apply_forecast_(JsonObject f) {
   c.clear();
   if (n > 0) {
     float max = 0.1f;
-    for (JsonObject h : hours) max = fmaxf(max, fmaxf(h["p90"] | 0.0f, (h["kwh"] | 0.0f) + (h["ev"] | 0.0f)));
+    for (JsonObject h : hours)
+      max = fmaxf(max, fmaxf(h["p90"] | 0.0f, (h["kwh"] | 0.0f) + (h["ev"] | 0.0f) + (h["charge"] | 0.0f)));
     max *= 1.08f;
     float step = (float) FC_W / n;
     int plot = FC_H - 2;
     auto y = [&](float v) { return plot - v / max * plot; };
-    uint32_t ev_color = f["evColor"] | 0;
+    uint32_t ev_color = f["evColor"] | 0, demand = f["demandColor"] | TEXT, charge_color = f["chargeColor"] | BATTERY;
     std::vector<float> xs, ys;
     for (size_t i = 0; i < n; i++) {
       JsonObject h = hours[i];
-      float kwh = h["kwh"] | 0.0f, ev = h["ev"] | 0.0f;
+      float kwh = h["kwh"] | 0.0f, ev = h["ev"] | 0.0f, charge = h["charge"] | 0.0f;
       for (int x = (int) (step * i); x < (int) (step * (i + 1)); x++) {
-        c.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), 0x9AA3AB, 46);
+        c.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), demand, 50);
         if (ev > 0) c.vspan(x, y(kwh + ev), y(kwh), ev_color, 140);
+        if (charge > 0.001f) c.vspan(x, y(kwh + ev + charge), y(kwh + ev), charge_color, 150);
       }
       xs.push_back(step / 2 + step * i);
       ys.push_back(y(kwh));
     }
     c.fill_rect(0, plot, FC_W, plot + 1, BORDER, 255);
-    for (size_t i = 1; i < n; i++) c.line(xs[i - 1], ys[i - 1], xs[i], ys[i], TEXT, 2.5f);
-    c.line(xs[0], ys[0], xs[0], ys[0], TEXT, 8);
+    for (size_t i = 1; i < n; i++) c.line(xs[i - 1], ys[i - 1], xs[i], ys[i], demand, 2.5f);
+    c.line(xs[0], ys[0], xs[0], ys[0], demand, 8);
     int peak = f["peak"] | 0;
     lv_obj_t *pl = this->text_(this->fc_labels_, this->small_, MUTED, f["peakLabel"] | "");
     lv_obj_set_pos(pl, 24 + (int) fminf(xs[peak] + 8, FC_W - 90), FC_Y + 2);
@@ -371,6 +397,49 @@ void EnergyUi::apply_forecast_(JsonObject f) {
     }
   }
   c.done();
+
+  // Solcast for the same hours: P50 filled, P10-P90 band
+  if (has_solar) {
+    set_text(this->fc_solar_title_, solar["title"] | "");
+    set_text(this->fc_solar_total_, solar["total"] | "");
+    uint32_t sc = solar["color"] | 0xF5B942;
+    lv_obj_set_style_text_color(this->fc_solar_total_, lv_color_hex(sc), 0);
+    lv_obj_align(this->fc_solar_total_, LV_ALIGN_TOP_RIGHT, -24, SO_Y - 4);
+    set_text(this->fc_solar_note_, solar["note"] | "");
+    JsonArray sh = solar["hours"];
+    size_t m = sh.size();
+    Canvas &s2 = this->fc_solar_canvas_;
+    s2.clear();
+    if (m > 0) {
+      float smax = 0.1f;
+      for (JsonObject h : sh) smax = fmaxf(smax, h["p90"] | 0.0f);
+      smax *= 1.08f;
+      float step = (float) FC_W / m;
+      int plot = SO_H - 2;
+      auto y = [&](float v) { return plot - v / smax * plot; };
+      std::vector<float> xs, ys;
+      for (size_t i = 0; i < m; i++) {
+        JsonObject h = sh[i];
+        float p50 = h["p50"] | 0.0f;
+        for (int x = (int) (step * i); x < (int) (step * (i + 1)); x++) {
+          s2.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), sc, 45);
+          s2.vspan(x, y(p50), plot, sc, 90);
+        }
+        xs.push_back(step / 2 + step * i);
+        ys.push_back(y(p50));
+      }
+      s2.fill_rect(0, plot, FC_W, plot + 1, BORDER, 255);
+      for (size_t i = 1; i < m; i++) s2.line(xs[i - 1], ys[i - 1], xs[i], ys[i], sc, 2.5f);
+      lv_obj_t *now = this->text_(this->fc_solar_labels_, this->small_, MUTED, f["nowLabel"] | "");
+      lv_obj_set_pos(now, 24, SO_CHART_Y + SO_H + 4);
+      for (size_t i = 0; i < m && i < n; i++) {
+        if (!(hours[i]["tick"] | false)) continue;
+        lv_obj_t *t = this->text_(this->fc_solar_labels_, this->small_, MUTED, hours[i]["label"] | "");
+        lv_obj_set_pos(t, 24 + (int) xs[i] - 9, SO_CHART_Y + SO_H + 4);
+      }
+    }
+    s2.done();
+  }
 
   // Will the battery last?
   lv_obj_clean(this->fc_rows_);

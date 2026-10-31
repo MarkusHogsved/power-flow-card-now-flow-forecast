@@ -148,4 +148,10 @@ export interface CardConfig {
   /** Main fuse (A), default 25. */
   fuse_current?: number;
   loadcast?: LoadCastConfig;
+  /**
+   * Planned grid charging of the home batteries: an entity whose attribute
+   * `windows` lists `{start, end, kwh?, target_soc?, name?}` (ISO times).
+   * Forecast stacks it on the demand chart and says when and how much.
+   */
+  battery_plan?: string;
 }

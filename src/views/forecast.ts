@@ -1,14 +1,18 @@
 import { html, nothing, svg } from "lit";
 import {
+  chargeByHour,
   netDemandKwh,
   peakIndex,
+  readChargePlan,
   readLoadCast,
+  readSolarByHour,
   readSolarP10ByHour,
   solarTakeoverIndex,
   sumKwh,
   usableBatteryKwh,
   vehicleByHour,
   type ForecastHour,
+  type SolarHour,
 } from "../forecast";
 import { formatEnergy, formatNumber, formatPercent, formatUntil, readNumber } from "../hass";
 import { COLORS } from "../model";
@@ -27,8 +31,9 @@ export interface VehicleLayer {
   color: string;
 }
 
-const chart = (hours: ForecastHour[], ev: VehicleLayer | null) => {
-  const top = (i: number) => hours[i].kwh + (ev?.kwh[i] ?? 0);
+const chart = (hours: ForecastHour[], ev: VehicleLayer | null, charge: number[] | null) => {
+  const evTop = (i: number) => hours[i].kwh + (ev?.kwh[i] ?? 0);
+  const top = (i: number) => evTop(i) + (charge?.[i] ?? 0);
   const max = Math.max(...hours.map((h, i) => Math.max(h.p90, top(i))), 0.1) * 1.08;
   const step = W / hours.length;
   const x = (i: number) => step / 2 + step * i;
@@ -44,17 +49,19 @@ const chart = (hours: ForecastHour[], ev: VehicleLayer | null) => {
       .join(" ") +
     " Z";
   // Stepped: the car charges in whole hours, a smooth line would suggest it ramps.
-  const evArea = ev
-    ? hours
-        .map((h, i) => {
-          const x0 = (step * i).toFixed(1);
-          const x1 = (step * (i + 1)).toFixed(1);
-          return ev.kwh[i] > 0
-            ? `M${x0} ${y(h.kwh).toFixed(1)} L${x0} ${y(top(i)).toFixed(1)} L${x1} ${y(top(i)).toFixed(1)} L${x1} ${y(h.kwh).toFixed(1)} Z`
-            : "";
-        })
-        .join(" ")
-    : "";
+  const stepped = (lo: (i: number) => number, hi: (i: number) => number) =>
+    hours
+      .map((_, i) => {
+        const x0 = (step * i).toFixed(1);
+        const x1 = (step * (i + 1)).toFixed(1);
+        return hi(i) - lo(i) > 0.001
+          ? `M${x0} ${y(lo(i)).toFixed(1)} L${x0} ${y(hi(i)).toFixed(1)} L${x1} ${y(hi(i)).toFixed(1)} L${x1} ${y(lo(i)).toFixed(1)} Z`
+          : "";
+      })
+      .join(" ");
+  const evArea = ev ? stepped((i) => hours[i].kwh, evTop) : "";
+  // Grid charging of the batteries on top: it is bought on top of the demand
+  const chargeArea = charge ? stepped(evTop, top) : "";
   const peak = peakIndex(hours);
   const peakEnd = new Date(hours[peak].start.getTime() + 3_600_000);
   const ticks = hours
@@ -63,12 +70,46 @@ const chart = (hours: ForecastHour[], ev: VehicleLayer | null) => {
 
   return svg`
     <svg class="chart" viewBox="0 0 ${W} ${SVG_H}" role="img" aria-label=${t("forecast.title")}>
-      <path d=${band} fill="#9AA3AB" fill-opacity="0.18"></path>
+      <path d=${band} fill=${COLORS.demand} fill-opacity="0.2"></path>
       ${evArea && ev ? svg`<path d=${evArea} fill=${ev.color} fill-opacity="0.55"></path>` : nothing}
-      <path d=${line} fill="none" stroke="var(--primary-text-color, #eceff2)" stroke-width="2" stroke-linejoin="round"></path>
+      ${chargeArea ? svg`<path d=${chargeArea} fill=${COLORS.battery} fill-opacity="0.6"></path>` : nothing}
+      <path d=${line} fill="none" stroke=${COLORS.demand} stroke-width="2" stroke-linejoin="round"></path>
       <line x1="0" y1=${PLOT_H + 0.5} x2=${W} y2=${PLOT_H + 0.5} stroke="var(--nff-track)"></line>
-      <circle cx=${x(0)} cy=${y(hours[0].kwh)} r="3.5" fill="var(--primary-text-color, #eceff2)"></circle>
+      <circle cx=${x(0)} cy=${y(hours[0].kwh)} r="3.5" fill=${COLORS.demand}></circle>
       <text x=${Math.min(x(peak) + 8, W - 70)} y="10">${t("forecast.peak", { from: hh(hours[peak].start), to: hh(peakEnd) })}</text>
+      <text x="0" y=${SVG_H - 2}>${t("forecast.now")}</text>
+      ${ticks.map(({ h, i }) => svg`<text x=${x(i) - 7} y=${SVG_H - 2}>${hh(h.start)}</text>`)}
+    </svg>
+  `;
+};
+
+/** Solcast for the same hours: P50 as a filled curve, P10-P90 as a band. */
+const solarChart = (hours: ForecastHour[], solar: SolarHour[]) => {
+  const max = Math.max(...solar.map((s) => s.p90), 0.1) * 1.08;
+  const step = W / hours.length;
+  const x = (i: number) => step / 2 + step * i;
+  const y = (v: number) => PLOT_H - (v / max) * PLOT_H;
+  const path = (pick: (s: SolarHour) => number) =>
+    solar.map((s, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(pick(s)).toFixed(1)}`).join(" ");
+  const band =
+    path((s) => s.p90) +
+    " " +
+    solar
+      .map((s, i) => ({ s, i }))
+      .reverse()
+      .map(({ s, i }) => `L${x(i).toFixed(1)} ${y(s.p10).toFixed(1)}`)
+      .join(" ") +
+    " Z";
+  const area = `${path((s) => s.p50)} L${x(solar.length - 1).toFixed(1)} ${PLOT_H} L${x(0).toFixed(1)} ${PLOT_H} Z`;
+  const ticks = hours
+    .map((h, i) => ({ h, i }))
+    .filter(({ h, i }) => i > 1 && h.start.getHours() % 6 === 0);
+  return svg`
+    <svg class="chart" viewBox="0 0 ${W} ${SVG_H}" role="img" aria-label=${t("forecast.solar_title")}>
+      <path d=${band} fill=${COLORS.solar} fill-opacity="0.18"></path>
+      <path d=${area} fill=${COLORS.solar} fill-opacity="0.35"></path>
+      <path d=${path((s) => s.p50)} fill="none" stroke=${COLORS.solar} stroke-width="2" stroke-linejoin="round"></path>
+      <line x1="0" y1=${PLOT_H + 0.5} x2=${W} y2=${PLOT_H + 0.5} stroke="var(--nff-track)"></line>
       <text x="0" y=${SVG_H - 2}>${t("forecast.now")}</text>
       ${ticks.map(({ h, i }) => svg`<text x=${x(i) - 7} y=${SVG_H - 2}>${hh(h.start)}</text>`)}
     </svg>
@@ -103,17 +144,62 @@ export const forecastData = (ctx: ViewContext) => {
   const evTotal = vehicles.reduce((s, x) => s + x.kwh, 0);
   const demand = homeDemand + unplannedKwh;
   const scale = Math.max(demand, usable ?? 0, 0.1);
+
+  // Solcast per hour for the same hours (P50 for the chart)
+  const solarMap = readSolarByHour(hass, config.solar?.forecast_entities);
+  const solar = hours.length && hours.every((h) => solarMap.has(h.start.getTime()))
+    ? hours.map((h) => solarMap.get(h.start.getTime()) as SolarHour)
+    : hours.length && solarMap.size
+      ? hours.map((h) => solarMap.get(h.start.getTime()) ?? { p10: 0, p50: 0, p90: 0 })
+      : null;
+  const solarTotal = solar ? solar.reduce((s, x) => s + x.p50, 0) : null;
+
+  // Planned grid charging of the batteries
+  const charges = config.battery_plan ? readChargePlan(hass, config.battery_plan, now) : null;
+  const chargeLayer = charges?.some((w) => (w.kwh ?? 0) > 0) ? chargeByHour(hours, charges, now) : null;
+  const plannedKwh = chargeLayer ? chargeLayer.reduce((s, v) => s + v, 0) : 0;
+  // The verdict hour by hour up to solar takeover: charging only helps if it
+  // comes before the batteries run out, and charging after takeover does not count
+  const horizon = takeover ?? hours.length;
+  // Room above the reserve: charging beyond it cannot be stored (Codex #34)
+  const room = m.batteries
+    .filter((b) => b.capacityKwh !== null && b.soc !== null)
+    .reduce((sum, b) => sum + ((100 - b.reserveSoc) / 100) * (b.capacityKwh as number), 0);
+  let level = (usable ?? 0) - unplannedKwh;
+  let worst = level;
+  let plannedInTime = 0;
+  for (let i = 0; i < horizon; i++) {
+    plannedInTime += chargeLayer?.[i] ?? 0;
+    const need = Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0);
+    level = Math.min(level + (chargeLayer?.[i] ?? 0) - need, room);
+    worst = Math.min(worst, level);
+  }
+  const verdict =
+    usable === null
+      ? null
+      : usable >= demand
+        ? { ok: true, text: t("last.covered", { margin: formatEnergy(hass, usable - demand) }) }
+        : plannedInTime > 0.5 && worst >= 0
+          ? { ok: true, text: t("last.covered_planned", { planned: formatEnergy(hass, plannedInTime) }) }
+          : plannedInTime > 0.5
+            ? { ok: false, text: t("last.short_planned", { missing: formatEnergy(hass, -worst), planned: formatEnergy(hass, plannedInTime) }) }
+            : { ok: false, text: t("last.short", { missing: formatEnergy(hass, demand - usable) }) };
   const at = (d: Date) => {
     const u = formatUntil(hass, d, now);
     return u.tomorrow ? t("forecast.tomorrow_at", { time: u.time }) : u.time;
   };
-  return { hours, error, solarTomorrow, takeover, homeDemand, usable, vehicles, evLayer, evTotal, demand, scale, at };
+  return {
+    hours, error, solarTomorrow, takeover, homeDemand, usable, vehicles, evLayer, evTotal, demand, scale, at,
+    solar, solarTotal, charges, chargeLayer, plannedKwh, verdict,
+  };
 };
 
 export const renderForecast = (ctx: ViewContext) => {
   const { hass, config } = ctx;
-  const { hours, error, solarTomorrow, takeover, homeDemand, usable, vehicles, evLayer, evTotal, demand, scale, at } =
-    forecastData(ctx);
+  const {
+    hours, error, solarTomorrow, takeover, homeDemand, usable, vehicles, evLayer, evTotal, scale, at,
+    solar, solarTotal, charges, chargeLayer, plannedKwh, verdict,
+  } = forecastData(ctx);
 
   return html`
     <div class="view">
@@ -122,17 +208,30 @@ export const renderForecast = (ctx: ViewContext) => {
         ${hours.length
           ? html`<b style="font-size: 13px">~${formatEnergy(hass, sumKwh(hours))}${evTotal > 0
               ? html` <span style="color: ${vehicles[0].v.color}">${t("forecast.plus_vehicle", { energy: formatEnergy(hass, evTotal) })}</span>`
+              : nothing}${plannedKwh > 0.5
+              ? html` <span style="color: ${COLORS.battery}">${t("forecast.plus_charge", { energy: formatEnergy(hass, plannedKwh) })}</span>`
               : nothing}</b>`
           : nothing}
       </div>
       ${hours.length
         ? html`
-            ${chart(hours, evLayer)}
+            ${chart(hours, evLayer, chargeLayer)}
             <span class="muted" style="font-size: 12px">
               ${t("forecast.band")}${error !== null
                 ? html` · ${t("forecast.error", { value: `${formatNumber(hass, error, 1)} %` })}`
                 : nothing}
             </span>
+            ${solar
+              ? html`
+                  <div class="row">
+                    <span class="section-title">${t("forecast.solar_title")}</span>
+                    <b style="font-size: 13px; color: ${COLORS.solar}">~${formatEnergy(hass, solarTotal as number)}</b>
+                  </div>
+                  ${(solarTotal as number) > 0.05
+                    ? html`${solarChart(hours, solar)}<span class="muted" style="font-size: 12px">${t("forecast.solar_band")}</span>`
+                    : html`<span class="muted" style="font-size: 12px">${t("forecast.solar_none")}</span>`}
+                `
+              : nothing}
 
             <div class="section-title">${t("last.title")}</div>
             <div class="battery-bar">
@@ -144,7 +243,7 @@ export const renderForecast = (ctx: ViewContext) => {
                 </span>
                 <b>~${formatEnergy(hass, homeDemand)}</b>
               </div>
-              <div class="track"><span style="width: ${(homeDemand / scale) * 100}%; background: var(--primary-text-color)"></span></div>
+              <div class="track"><span style="width: ${(homeDemand / scale) * 100}%; background: ${COLORS.demand}"></span></div>
             </div>
             ${vehicles.map(
               (x) => html`
@@ -177,11 +276,28 @@ export const renderForecast = (ctx: ViewContext) => {
                     </div>
                     <div class="track"><span style="width: ${(usable / scale) * 100}%; background: ${COLORS.battery}"></span></div>
                   </div>
-                  <div class="verdict">
-                    ${usable >= demand
-                      ? t("last.covered", { margin: formatEnergy(hass, usable - demand) })
-                      : t("last.short", { missing: formatEnergy(hass, demand - usable) })}
-                  </div>
+                  ${charges
+                    ? charges.length
+                      ? charges.map(
+                          (w) => html`
+                            <div class="battery-bar">
+                              <div class="row">
+                                <span class="muted">
+                                  ${t("last.charge", { from: at(w.start), to: at(w.end) })}${w.name || w.targetSoc !== null
+                                    ? html`<br />${t("last.charge_to", {
+                                        name: w.name,
+                                        soc: w.targetSoc !== null ? formatPercent(hass, w.targetSoc) : "?",
+                                      })}`
+                                    : nothing}
+                                </span>
+                                <b style="color: ${COLORS.battery}">${w.kwh !== null ? `~${formatEnergy(hass, w.kwh)}` : "?"}</b>
+                              </div>
+                            </div>
+                          `,
+                        )
+                      : html`<div class="muted" style="font-size: 12px">${t("last.charge_none")}</div>`
+                    : nothing}
+                  <div class="verdict">${verdict?.text}</div>
                 `
               : html`<div class="muted" style="font-size: 12px">${t("last.no_capacity")}</div>`}
           `

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.0
+
+- Forecast in colour: LoadCast's demand line and P10-P90 band in purple (the
+  same colour as the home forecast in the node details), the demand bar too.
+- Forecast: a solar chart for the same 24 hours - Solcast P50 filled, P10-P90
+  as a band, with the total. Needs `solar.forecast_entities`.
+- Forecast: `battery_plan` - planned grid charging of the home batteries
+  (attribute `windows`: start, end, kwh, target_soc, name). Stacked on the
+  demand chart in the battery colour, one row per window (when, how much, to
+  what level), and counted in the verdict: "Covered with the planned grid
+  charging" or "Short by X - Y of it planned from the grid".
+- The P4 display gets all three: the solar chart under the demand chart,
+  "Will the battery last?" below it.
+
 ## 0.10.0
 
 - Home detail: the forecast comes from LoadCast's `past` attribute (LoadCast

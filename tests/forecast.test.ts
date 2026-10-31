@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { cheapestBlock, currentPriceIndex, expectedImportKwh, pricePeriodMs, readPrices, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
+import { chargeByHour, readChargePlan, readSolarByHour, cheapestBlock, currentPriceIndex, expectedImportKwh, pricePeriodMs, readPrices, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
 import type { BatteryState } from "../src/model";
 import { niceStep, stepDecimals } from "../src/snapshot";
 import { makeHass } from "./helpers";
@@ -251,5 +251,46 @@ describe("price axis and cheapest window", () => {
       { start: at(16), value: 4 },
     ];
     expect(cheapestBlock(pts, 0, 3)).toMatchObject({ index: 3, avg: 2, end: at(17) });
+  });
+});
+
+describe("solar bands and the battery charging plan", () => {
+  test("readSolarByHour sums half-hours into P10/P50/P90 kWh per hour", () => {
+    const h = new Date("2026-10-21T12:00:00+02:00");
+    const half = new Date(h.getTime() + 1_800_000);
+    const periods = [
+      { period_start: h.toISOString(), pv_estimate: 4, pv_estimate10: 2, pv_estimate90: 6 },
+      { period_start: half.toISOString(), pv_estimate: 2, pv_estimate10: 1 },
+      ...Array.from({ length: 46 }, (_, i) => ({ period_start: new Date(h.getTime() + (i + 2) * 1_800_000).toISOString(), pv_estimate: 0 })),
+    ];
+    const m = readSolarByHour(makeHass({ "sensor.s": ["0", { detailedForecast: periods }] }), ["sensor.s"]);
+    // missing P90 falls back to P50
+    expect(m.get(h.getTime())).toEqual({ p10: 1.5, p50: 3, p90: 4 });
+  });
+
+  test("readChargePlan keeps windows not yet over, sorted; chargeByHour spreads what is left", () => {
+    const hours = readLoadCast(hass, "sensor.loadcast", NOW);
+    const at = (h: number) => new Date(hours[0].start.getTime() + h * 3_600_000).toISOString();
+    const plan = makeHass({
+      "sensor.plan": [
+        "x",
+        {
+          windows: [
+            { start: at(5), end: at(7), kwh: 10, target_soc: 80, name: "Night" },
+            { start: at(-3), end: at(-1), kwh: 5 },
+            { start: at(-1), end: at(1), kwh: "unknown" },
+          ],
+        },
+      ],
+    });
+    const windows = readChargePlan(plan, "sensor.plan", NOW);
+    expect(windows.map((w) => [w.name, w.kwh, w.targetSoc])).toEqual([["", null, null], ["Night", 10, 80]]);
+    const layer = chargeByHour(hours, windows, NOW);
+    expect(layer[5]).toBeCloseTo(5);
+    expect(layer[6]).toBeCloseTo(5);
+    expect(layer.reduce((s, v) => s + v, 0)).toBeCloseTo(10);
+    // A window in progress: only what is left of it, spread over the rest
+    const running = [{ start: new Date(NOW.getTime() - 3_600_000), end: new Date(NOW.getTime() + 3_600_000), kwh: 4, targetSoc: null, name: "" }];
+    expect(chargeByHour(hours, running, NOW).reduce((s, v) => s + v, 0)).toBeCloseTo(4);
   });
 });
