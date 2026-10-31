@@ -258,6 +258,8 @@ void EnergyUi::apply_flow_(JsonObject f) {
 // ---------------------------------------------------------------- Forecast
 
 static const int FC_W = MAIN_W - 48, FC_H = 170, FC_Y = 50;
+// The card's light purple washes out to near white on the panel: a more saturated line
+static const uint32_t DEMAND_LINE = 0x8F6CF2;
 // Solar chart under the demand chart; "Will the battery last?" moves below it
 static const int SO_Y = 286, SO_H = 120, SO_CHART_Y = SO_Y + 34;
 static const int LAST_Y_SOLAR = SO_CHART_Y + SO_H + 60, LAST_Y_PLAIN = 286;
@@ -377,7 +379,7 @@ void EnergyUi::apply_forecast_(JsonObject f) {
       JsonObject h = hours[i];
       float kwh = h["kwh"] | 0.0f, ev = h["ev"] | 0.0f, charge = h["charge"] | 0.0f;
       for (int x = (int) (step * i); x < (int) (step * (i + 1)); x++) {
-        c.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), demand, 26);
+        c.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), demand, 42);
         if (ev > 0) c.vspan(x, y(kwh + ev), y(kwh), ev_color, 140);
         if (charge > 0.001f) c.vspan(x, y(kwh + ev + charge), y(kwh + ev), charge_color, 150);
       }
@@ -390,10 +392,10 @@ void EnergyUi::apply_forecast_(JsonObject f) {
       float gy = y(t["v"] | 0.0f);
       c.line(0, gy, FC_W, gy, BORDER, 1.0f, 255, 6);
       lv_obj_t *l = this->text_(this->fc_labels_, this->small_, MUTED, t["label"] | "");
-      lv_obj_set_pos(l, 24 + FC_W - 64, FC_Y + (int) gy - 20);
+      lv_obj_set_pos(l, 24 + FC_W - 64, FC_Y + (int) gy - 26);
     }
-    for (size_t i = 1; i < n; i++) c.line(xs[i - 1], ys[i - 1], xs[i], ys[i], demand, 3.0f);
-    c.line(xs[0], ys[0], xs[0], ys[0], demand, 8);
+    for (size_t i = 1; i < n; i++) c.line(xs[i - 1], ys[i - 1], xs[i], ys[i], DEMAND_LINE, 3.5f);
+    c.line(xs[0], ys[0], xs[0], ys[0], DEMAND_LINE, 9);
     int peak = f["peak"] | 0;
     lv_obj_t *pl = this->text_(this->fc_labels_, this->small_, MUTED, f["peakLabel"] | "");
     lv_obj_set_pos(pl, 24 + (int) fminf(xs[peak] + 8, FC_W - 90), FC_Y + 2);
@@ -433,7 +435,7 @@ void EnergyUi::apply_forecast_(JsonObject f) {
         JsonObject h = sh[i];
         float p50 = h["p50"] | 0.0f;
         for (int x = (int) (step * i); x < (int) (step * (i + 1)); x++) {
-          s2.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), sc, 22);
+          s2.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), sc, 36);
           s2.vspan(x, y(p50), plot, sc, 130);
         }
         xs.push_back(step / 2 + step * i);
@@ -444,7 +446,7 @@ void EnergyUi::apply_forecast_(JsonObject f) {
         float gy = y(t["v"] | 0.0f);
         s2.line(0, gy, FC_W, gy, BORDER, 1.0f, 255, 6);
         lv_obj_t *l = this->text_(this->fc_solar_labels_, this->small_, MUTED, t["label"] | "");
-        lv_obj_set_pos(l, 24 + FC_W - 64, SO_CHART_Y + (int) gy - 20);
+        lv_obj_set_pos(l, 24 + FC_W - 64, SO_CHART_Y + (int) gy - 26);
       }
       for (size_t i = 1; i < m; i++) s2.line(xs[i - 1], ys[i - 1], xs[i], ys[i], sc, 3.0f);
       lv_obj_t *now = this->text_(this->fc_solar_labels_, this->small_, MUTED, f["nowLabel"] | "");

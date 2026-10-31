@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- P4 Forecast: the bands a little stronger again (0.12.0 toned them down too
+  far on the panel), a saturated purple demand line, and the grid labels
+  above their lines instead of on them.
+
 ## 0.12.0
 
 - Forecast: short and nothing (enough) planned - when the batteries run out
