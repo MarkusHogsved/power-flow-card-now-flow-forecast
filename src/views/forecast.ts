@@ -158,15 +158,27 @@ export const forecastData = (ctx: ViewContext) => {
   const charges = config.battery_plan ? readChargePlan(hass, config.battery_plan, now) : null;
   const chargeLayer = charges?.some((w) => (w.kwh ?? 0) > 0) ? chargeByHour(hours, charges, now) : null;
   const plannedKwh = chargeLayer ? chargeLayer.reduce((s, v) => s + v, 0) : 0;
+  // The verdict hour by hour up to solar takeover: charging only helps if it
+  // comes before the batteries run out, and charging after takeover does not count
+  const horizon = takeover ?? hours.length;
+  let level = (usable ?? 0) - unplannedKwh;
+  let worst = level;
+  let plannedInTime = 0;
+  for (let i = 0; i < horizon; i++) {
+    level += chargeLayer?.[i] ?? 0;
+    plannedInTime += chargeLayer?.[i] ?? 0;
+    level -= Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0);
+    worst = Math.min(worst, level);
+  }
   const verdict =
     usable === null
       ? null
       : usable >= demand
         ? { ok: true, text: t("last.covered", { margin: formatEnergy(hass, usable - demand) }) }
-        : plannedKwh > 0.5 && usable + plannedKwh >= demand
-          ? { ok: true, text: t("last.covered_planned", { planned: formatEnergy(hass, plannedKwh) }) }
-          : plannedKwh > 0.5
-            ? { ok: false, text: t("last.short_planned", { missing: formatEnergy(hass, demand - usable), planned: formatEnergy(hass, plannedKwh) }) }
+        : plannedInTime > 0.5 && worst >= 0
+          ? { ok: true, text: t("last.covered_planned", { planned: formatEnergy(hass, plannedInTime) }) }
+          : plannedInTime > 0.5
+            ? { ok: false, text: t("last.short_planned", { missing: formatEnergy(hass, -worst), planned: formatEnergy(hass, plannedInTime) }) }
             : { ok: false, text: t("last.short", { missing: formatEnergy(hass, demand - usable) }) };
   const at = (d: Date) => {
     const u = formatUntil(hass, d, now);

@@ -113,7 +113,7 @@ const en = {
   "last.usable": "Usable battery energy",
   "last.covered": "Covered with {margin} to spare",
   "last.short": "Short by {missing} - expect to buy from the grid",
-  "last.short_planned": "Short by {missing} - {planned} of it planned from the grid",
+  "last.short_planned": "Short by {missing} even with {planned} planned from the grid in time",
   "last.covered_planned": "Covered with the planned grid charging ({planned})",
   "last.charge": "Grid charging {from}-{to}",
   "last.charge_to": "{name} · to {soc}",

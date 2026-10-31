@@ -322,6 +322,27 @@ describe("card", () => {
     expect(root(card).querySelectorAll("svg.chart")).toHaveLength(2);
     expect(root(card).querySelectorAll("svg.chart path")).toHaveLength(6);
 
+    // Verdict in time order (Codex #34): 3 kWh/h, no sun until hour 18, so
+    // ~54 kWh is needed from the batteries before solar takes over
+    states["sensor.loadcast"] = ["72", { forecast: forecast.map((f) => ({ ...f, kwh: 3, kwh_p10: 2, kwh_p90: 4 })) }];
+    const late = periods.map((p, i) => {
+      const h = (i - 48) / 2;
+      return h >= 18 && h < 22 ? { ...p, pv_estimate: 8, pv_estimate10: 6, pv_estimate90: 9 } : { ...p, pv_estimate: 0, pv_estimate10: 0, pv_estimate90: 0 };
+    });
+    states["sensor.solcast_a"] = ["0", { detailedForecast: late.slice(0, 48) }];
+    states["sensor.solcast_b"] = ["0", { detailedForecast: late.slice(48) }];
+    const plan = (from: number, to: number) => ["40", { windows: [{ start: at(from).toISOString(), end: at(to).toISOString(), kwh: 40, target_soc: 100, name: "X" }] }];
+    // 40 kWh early enough: covered
+    states["sensor.plan"] = plan(1, 4) as typeof states["sensor.plan"];
+    card = await mount(config, states);
+    expect(root(card).textContent).toContain("Covered with the planned grid charging");
+    // the same 40 kWh after solar has taken over: still short
+    states["sensor.plan"] = plan(19, 22) as typeof states["sensor.plan"];
+    card = await mount(config, states);
+    text = root(card).textContent?.replace(/\s+/g, " ") ?? "";
+    expect(text).not.toContain("Covered with the planned grid charging");
+    expect(text).toContain("Short by");
+
     // A plan entity with no windows says so
     states["sensor.plan"] = ["0", { windows: [] }];
     card = await mount(config, states);
