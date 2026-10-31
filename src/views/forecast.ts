@@ -1,5 +1,10 @@
 import { html, nothing, svg } from "lit";
 import {
+  chartScale,
+  cheapestBlock,
+  currentPriceIndex,
+  pricePeriodMs,
+  readPrices,
   chargeByHour,
   netDemandKwh,
   peakIndex,
@@ -25,6 +30,15 @@ const SVG_H = 96;
 
 const hh = (d: Date): string => String(d.getHours()).padStart(2, "0");
 
+/** Dashed grid lines with their value (kWh per hour) at the right edge. */
+const grid = (ticks: number[], y: (v: number) => number) =>
+  ticks.map(
+    (v) => svg`
+      <line x1="0" y1=${y(v).toFixed(1)} x2=${W} y2=${y(v).toFixed(1)} stroke="var(--nff-track)" stroke-dasharray="3 4"></line>
+      <text x=${W} y=${(y(v) - 2).toFixed(1)} text-anchor="end">${t("forecast.axis", { value: String(v) })}</text>
+    `,
+  );
+
 /** A vehicle's planned charging on top of the home demand, per hour. */
 export interface VehicleLayer {
   kwh: number[];
@@ -34,7 +48,8 @@ export interface VehicleLayer {
 const chart = (hours: ForecastHour[], ev: VehicleLayer | null, charge: number[] | null) => {
   const evTop = (i: number) => hours[i].kwh + (ev?.kwh[i] ?? 0);
   const top = (i: number) => evTop(i) + (charge?.[i] ?? 0);
-  const max = Math.max(...hours.map((h, i) => Math.max(h.p90, top(i))), 0.1) * 1.08;
+  const scale = chartScale(Math.max(...hours.map((h, i) => Math.max(h.p90, top(i)))));
+  const max = scale.max;
   const step = W / hours.length;
   const x = (i: number) => step / 2 + step * i;
   const y = (v: number) => PLOT_H - (v / max) * PLOT_H;
@@ -70,6 +85,7 @@ const chart = (hours: ForecastHour[], ev: VehicleLayer | null, charge: number[] 
 
   return svg`
     <svg class="chart" viewBox="0 0 ${W} ${SVG_H}" role="img" aria-label=${t("forecast.title")}>
+      ${grid(scale.ticks, y)}
       <path d=${band} fill=${COLORS.demand} fill-opacity="0.2"></path>
       ${evArea && ev ? svg`<path d=${evArea} fill=${ev.color} fill-opacity="0.55"></path>` : nothing}
       ${chargeArea ? svg`<path d=${chargeArea} fill=${COLORS.battery} fill-opacity="0.6"></path>` : nothing}
@@ -85,7 +101,8 @@ const chart = (hours: ForecastHour[], ev: VehicleLayer | null, charge: number[] 
 
 /** Solcast for the same hours: P50 as a filled curve, P10-P90 as a band. */
 const solarChart = (hours: ForecastHour[], solar: SolarHour[]) => {
-  const max = Math.max(...solar.map((s) => s.p90), 0.1) * 1.08;
+  const scale = chartScale(Math.max(...solar.map((s) => s.p90)));
+  const max = scale.max;
   const step = W / hours.length;
   const x = (i: number) => step / 2 + step * i;
   const y = (v: number) => PLOT_H - (v / max) * PLOT_H;
@@ -106,6 +123,7 @@ const solarChart = (hours: ForecastHour[], solar: SolarHour[]) => {
     .filter(({ h, i }) => i > 1 && h.start.getHours() % 6 === 0);
   return svg`
     <svg class="chart" viewBox="0 0 ${W} ${SVG_H}" role="img" aria-label=${t("forecast.solar_title")}>
+      ${grid(scale.ticks, y)}
       <path d=${band} fill=${COLORS.solar} fill-opacity="0.18"></path>
       <path d=${area} fill=${COLORS.solar} fill-opacity="0.35"></path>
       <path d=${path((s) => s.p50)} fill="none" stroke=${COLORS.solar} stroke-width="2" stroke-linejoin="round"></path>
@@ -168,11 +186,29 @@ export const forecastData = (ctx: ViewContext) => {
   let level = (usable ?? 0) - unplannedKwh;
   let worst = level;
   let plannedInTime = 0;
+  let runOut: Date | null = null;
+  // Level at the start of each hour and that hour's need, for sizing a suggestion
+  const startLevel: number[] = [];
+  const needs: number[] = [];
   for (let i = 0; i < horizon; i++) {
+    startLevel.push(level);
     plannedInTime += chargeLayer?.[i] ?? 0;
-    const need = Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0);
-    level = Math.min(level + (chargeLayer?.[i] ?? 0) - need, room);
+    // The hour now running counts only for the part still ahead (Codex #35)
+    const hourEnd = hours[i].start.getTime() + 3_600_000;
+    const ahead = Math.min(Math.max((hourEnd - now.getTime()) / 3_600_000, 0), 1);
+    const need = Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0) * ahead;
+    needs.push(need);
+    const charge = chargeLayer?.[i] ?? 0;
+    const start = level;
+    level = Math.min(start + charge - need, room);
     worst = Math.min(worst, level);
+    if (level < 0 && runOut === null) {
+      // Part way into the hour, at the net rate: charging arrives over the hour too (Codex #35)
+      const from = Math.max(hours[i].start.getTime(), now.getTime());
+      const net = need - charge;
+      const frac = net > 0 ? Math.min(Math.max(start / net, 0), 1) : 0;
+      runOut = new Date(from + frac * (hourEnd - from));
+    }
   }
   const verdict =
     usable === null
@@ -184,13 +220,69 @@ export const forecastData = (ctx: ViewContext) => {
           : plannedInTime > 0.5
             ? { ok: false, text: t("last.short_planned", { missing: formatEnergy(hass, -worst), planned: formatEnergy(hass, plannedInTime) }) }
             : { ok: false, text: t("last.short", { missing: formatEnergy(hass, demand - usable) }) };
+
+  // Short and nothing (enough) planned: when the batteries run out, and the
+  // cheapest grid charging that fits before then - a suggestion, not a plan
+  // From the same trajectory as the run-out (the running hour prorated, planned charging in) (Codex #35)
+  const missing = verdict && !verdict.ok ? Math.max(-worst, 0) : 0;
+  let suggestion:
+    | { runOut: Date; kwh: number; later: number; start: Date; end: Date; price: string }
+    | { runOut: Date; kwh: number; later: number; start: null }
+    | null = null;
+  if (missing > 0.5 && runOut) {
+    const prices = readPrices(hass, config.grid?.price, now);
+    const step = pricePeriodMs(prices);
+    const fits = prices.filter((p) => p.start.getTime() + step <= (runOut as Date).getTime());
+    const cur = currentPriceIndex(fits, now);
+    const from = cur < 0 ? 0 : now > fits[cur].start ? cur + 1 : cur;
+    const kw = m.batteries.reduce((sum, b) => sum + (b.maxChargeKw ?? 0), 0);
+    // Whole price periods, rounded up, so the block can deliver what it says (Codex #35);
+    // never more than the batteries can take
+    const stepH = step / 3_600_000;
+    const sized = Math.min(missing, room);
+    const needH = (kw > 0 ? Math.ceil(sized / kw / stepH - 1e-9) : Math.ceil(1 / stepH)) * stepH;
+    // Not enough time before run-out for the whole block: the longest that fits,
+    // the rest is bought later (Codex #35)
+    const availH = Math.max(fits.length - from, 0) * stepH;
+    const b = availH > 0 ? cheapestBlock(fits, from, Math.min(needH, availH)) : null;
+    const unit = String(hass.states[config.grid?.price ?? ""]?.attributes?.unit_of_measurement ?? "");
+    if (b) {
+      // What fits in the batteries during the block: room above the level at its
+      // start plus what the home uses meanwhile (Codex #35)
+      const start = fits[b.index].start.getTime();
+      const end = b.end.getTime();
+      let atStart = usable ?? 0;
+      let during = 0;
+      hours.slice(0, horizon).forEach((h, i) => {
+        const a = Math.max(h.start.getTime(), now.getTime());
+        const z = h.start.getTime() + 3_600_000;
+        const span = Math.max(z - a, 1);
+        // Level at the block start, also part way into an hour (Codex #35)
+        if (a <= start && start < z) atStart = startLevel[i] + (chargeLayer?.[i] ?? 0) * ((start - a) / span) - needs[i] * ((start - a) / span);
+        else if (z <= start) atStart = startLevel[i + 1] ?? level;
+        const overlap = Math.min(z, end) - Math.max(a, start);
+        if (overlap > 0) during += (needs[i] * overlap) / span;
+      });
+      const kwh = Math.min(missing, Math.max(room - Math.max(atStart, 0) + during, 0), kw > 0 ? kw * ((end - start) / 3_600_000) : missing);
+      suggestion = {
+        runOut,
+        kwh,
+        later: missing - kwh > 0.5 ? missing - kwh : 0,
+        start: fits[b.index].start,
+        end: b.end,
+        price: `${formatNumber(hass, b.avg, 2)}${unit ? ` ${unit}` : ""}`,
+      };
+    } else {
+      suggestion = { runOut, kwh: missing, later: 0, start: null };
+    }
+  }
   const at = (d: Date) => {
     const u = formatUntil(hass, d, now);
     return u.tomorrow ? t("forecast.tomorrow_at", { time: u.time }) : u.time;
   };
   return {
     hours, error, solarTomorrow, takeover, homeDemand, usable, vehicles, evLayer, evTotal, demand, scale, at,
-    solar, solarTotal, charges, chargeLayer, plannedKwh, verdict,
+    solar, solarTotal, charges, chargeLayer, plannedKwh, verdict, suggestion,
   };
 };
 
@@ -198,7 +290,7 @@ export const renderForecast = (ctx: ViewContext) => {
   const { hass, config } = ctx;
   const {
     hours, error, solarTomorrow, takeover, homeDemand, usable, vehicles, evLayer, evTotal, scale, at,
-    solar, solarTotal, charges, chargeLayer, plannedKwh, verdict,
+    solar, solarTotal, charges, chargeLayer, plannedKwh, verdict, suggestion,
   } = forecastData(ctx);
 
   return html`
@@ -298,6 +390,25 @@ export const renderForecast = (ctx: ViewContext) => {
                       : html`<div class="muted" style="font-size: 12px">${t("last.charge_none")}</div>`
                     : nothing}
                   <div class="verdict">${verdict?.text}</div>
+                  ${suggestion
+                    ? html`
+                        <div class="battery-bar">
+                          <div class="row">
+                            <span class="muted">
+                              ${suggestion.start
+                                ? html`${t("last.suggest", { from: at(suggestion.start), to: at(suggestion.end) })}<br />${t(
+                                      "last.suggest_sub",
+                                      { runout: at(suggestion.runOut), price: suggestion.price },
+                                    )}${suggestion.later > 0
+                                      ? html`<br />${t("last.suggest_later", { energy: formatEnergy(hass, suggestion.later) })}`
+                                      : nothing}`
+                                : t("last.runout", { runout: at(suggestion.runOut) })}
+                            </span>
+                            <b style="color: ${COLORS.battery}">~${formatEnergy(hass, suggestion.kwh)}</b>
+                          </div>
+                        </div>
+                      `
+                    : nothing}
                 `
               : html`<div class="muted" style="font-size: 12px">${t("last.no_capacity")}</div>`}
           `

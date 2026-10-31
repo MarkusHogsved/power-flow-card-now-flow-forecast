@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.12.0
+
+- Forecast: short and nothing (enough) planned - when the batteries run out
+  and the cheapest charging block before then (time, average price, energy).
+  The block length follows `batteries[].max_charge_kw`, one hour without it.
+  A suggestion from the prices, not the automations' plan.
+- Forecast charts get a scale: dashed grid lines with their value (kWh per
+  hour) on both the demand and the solar chart.
+- P4: the same scale and suggestion; the P10-P90 bands toned down and the
+  lines thicker, since the panel shows light colours stronger than a browser.
+
 ## 0.11.0
 
 - Forecast in colour: LoadCast's demand line and P10-P90 band in purple (the

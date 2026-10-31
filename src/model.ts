@@ -28,6 +28,8 @@ export interface BatteryState {
   powerW: number;
   capacityKwh: number | null;
   reserveSoc: number;
+  /** Grid charging rate (kW), null when not configured. */
+  maxChargeKw: number | null;
   stateOfChargeEntity: string;
   /** Measured inside home consumption: shown, but left out of the flows. */
   insideHome: boolean;
@@ -184,6 +186,7 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
       powerW: Math.abs(raw) > IDLE_W ? raw : 0,
       capacityKwh: b.capacity_kwh ?? null,
       reserveSoc: b.reserve_soc ?? 0,
+      maxChargeKw: b.max_charge_kw ?? null,
       stateOfChargeEntity: b.state_of_charge,
       insideHome: b.inside_home ?? false,
     };

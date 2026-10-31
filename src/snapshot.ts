@@ -1,5 +1,5 @@
 import { nodeDetails, type DetailHistory } from "./details";
-import { cheapestBlock, currentPriceIndex, peakIndex, pricePeriodMs, readPrices, readUpcomingPrices, sumKwh, type PricePoint } from "./forecast";
+import { chartScale, cheapestBlock, currentPriceIndex, peakIndex, pricePeriodMs, readPrices, readUpcomingPrices, sumKwh, type PricePoint } from "./forecast";
 import { formatEnergy, formatNumber, formatPercent, formatPower, formatUntil } from "./hass";
 import { COLORS, type Flows, type LoadState, type Model } from "./model";
 import { average, valueAt, type Series } from "./review";
@@ -192,6 +192,12 @@ export const flowSnapshot = (ctx: ViewContext) => {
 };
 
 /** The demand chart (kWh per hour) and "Will the battery last?". */
+/** Chart top and grid lines with labels, the same as the card draws. */
+const axis = (rawMax: number) => {
+  const s = chartScale(rawMax);
+  return { max: s.max, ticks: s.ticks.map((v) => ({ v, label: t("forecast.axis", { value: String(v) }) })) };
+};
+
 export const forecastSnapshot = (ctx: ViewContext) => {
   const { hass } = ctx;
   const d = forecastData(ctx);
@@ -238,6 +244,7 @@ export const forecastSnapshot = (ctx: ViewContext) => {
       rows.push({ label: t("last.charge_none"), sub: null, value: "", color: rgb(COLORS.battery), frac: null });
     }
   }
+  const sug = d.suggestion;
   return {
     title: t("forecast.title"),
     unavailable: null,
@@ -272,6 +279,19 @@ export const forecastSnapshot = (ctx: ViewContext) => {
     rows,
     verdict: d.verdict?.text ?? null,
     verdictOk: d.verdict?.ok ?? false,
+    // After the verdict: when the batteries run out and the cheapest charging before then
+    suggestion: sug
+      ? {
+          label: sug.start ? t("last.suggest", { from: d.at(sug.start), to: d.at(sug.end) }) : t("last.runout", { runout: d.at(sug.runOut) }),
+          sub: sug.start
+            ? t("last.suggest_sub", { runout: d.at(sug.runOut), price: sug.price }) +
+              (sug.later > 0 ? ` · ${t("last.suggest_later", { energy: formatEnergy(hass, sug.later) })}` : "")
+            : null,
+          value: `~${formatEnergy(hass, sug.kwh)}`,
+          color: rgb(COLORS.battery),
+        }
+      : null,
+    scale: axis(Math.max(...d.hours.map((h, i) => Math.max(h.p90, h.kwh + (d.evLayer?.kwh[i] ?? 0) + (d.chargeLayer?.[i] ?? 0))))),
     solar: d.solar
       ? {
           title: t("forecast.solar_title"),
@@ -279,6 +299,7 @@ export const forecastSnapshot = (ctx: ViewContext) => {
           color: rgb(COLORS.solar),
           note: (d.solarTotal as number) > 0.05 ? t("forecast.solar_band") : t("forecast.solar_none"),
           hours: (d.solarTotal as number) > 0.05 ? d.solar.map((x) => ({ p10: x.p10, p50: x.p50, p90: x.p90 })) : [],
+          scale: axis(Math.max(...d.solar.map((x) => x.p90))),
         }
       : null,
     note: d.usable === null ? t("last.no_capacity") : null,

@@ -360,6 +360,52 @@ describe("card", () => {
     expect(text).not.toContain("battery charging");
   });
 
+  test("Forecast short and nothing planned: when the batteries run out and the cheapest charging before then", async () => {
+    const now = new Date();
+    const hourStart = new Date(now);
+    hourStart.setMinutes(0, 0, 0);
+    const at = (h: number) => new Date(hourStart.getTime() + h * 3_600_000);
+    // 4 kWh/h, no sun: 43 kWh usable runs out after ~10 h
+    const forecast = Array.from({ length: 24 }, (_, i) => ({ period_start: at(i).toISOString(), kwh: 4, kwh_p10: 3, kwh_p90: 5 }));
+    // Quarter prices by wall clock: 0.50 from 3 to 9 h from now, 2.00 otherwise
+    const day = (offset: number) =>
+      Array.from({ length: 96 }, (_, q) => {
+        const d = new Date(hourStart);
+        d.setDate(d.getDate() + offset);
+        d.setHours(Math.floor(q / 4), (q % 4) * 15, 0, 0);
+        return d >= at(3) && d < at(9) ? 0.5 : 2;
+      });
+    const states = {
+      ...eveningStates,
+      "sensor.loadcast": ["96", { forecast }],
+      "sensor.price": ["2", { unit_of_measurement: "SEK/kWh", today: day(0), tomorrow: day(1) }],
+    } as typeof eveningStates;
+    const config = {
+      ...houseConfig,
+      default_view: "forecast" as const,
+      batteries: [{ ...houseConfig.batteries![0], max_charge_kw: 10 }, ...houseConfig.batteries!.slice(1)],
+    };
+    const card = await mount(config, states);
+    const text = root(card).textContent?.replace(/\s+/g, " ") ?? "";
+    expect(text).toContain("Short by");
+    expect(text).toMatch(/Cheapest charging before then: (tomorrow )?\d{1,2}[:.]\d\d( [AP]M)?-/);
+    expect(text).toMatch(/batteries empty ~(tomorrow )?\d{1,2}[:.]\d\d( [AP]M)? · avg 0\.50 SEK\/kWh/);
+    // 53 kWh short but only ~45 kWh fit during the block (54 kWh room, ~31 kWh
+    // left at its start, ~22 kWh used meanwhile): the rest is bought later
+    expect(text).toMatch(/fills the batteries - ~\d+(\.\d)? kWh more from the grid later/);
+    // Too little time before run-out for the whole block: the longest that fits
+    // is suggested instead of "no prices" (Codex #35)
+    const slow = { ...config, batteries: [{ ...houseConfig.batteries![0], max_charge_kw: 1 }, ...houseConfig.batteries!.slice(1)] };
+    const card2 = await mount(slow, states);
+    const text2 = root(card2).textContent?.replace(/\s+/g, " ") ?? "";
+    expect(text2).toContain("Cheapest charging before then");
+    expect(text2).not.toContain("no prices known");
+    expect(text2).toContain("more from the grid later");
+    // grid lines carry their value
+    expect(text).toMatch(/\d+(\.\d+)? kWh/);
+    expect(root(card).querySelectorAll("svg.chart line[stroke-dasharray]").length).toBeGreaterThan(0);
+  });
+
   test("Forecast without LoadCast data says so instead of breaking", async () => {
     const card = await mount({ ...houseConfig, default_view: "forecast" });
     expect(root(card).textContent).toContain("No LoadCast forecast available.");

@@ -363,3 +363,14 @@ export const cheapestBlock = (
   }
   return best;
 };
+
+/** Top of a chart (with headroom) and 1-3 round grid values below it, for the axis labels. */
+export const chartScale = (rawMax: number): { max: number; ticks: number[] } => {
+  const max = Math.max(rawMax, 0.1) * 1.08;
+  const raw = max / 4;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = ([1, 2, 2.5, 5, 10].map((k) => k * mag).find((v) => v >= raw) as number) ?? 10 * mag;
+  const ticks: number[] = [];
+  for (let v = step; v < max * 0.999 && ticks.length < 3; v += step) ticks.push(Number(v.toPrecision(6)));
+  return { max, ticks };
+};
