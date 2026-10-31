@@ -161,13 +161,17 @@ export const forecastData = (ctx: ViewContext) => {
   // The verdict hour by hour up to solar takeover: charging only helps if it
   // comes before the batteries run out, and charging after takeover does not count
   const horizon = takeover ?? hours.length;
+  // Room above the reserve: charging beyond it cannot be stored (Codex #34)
+  const room = m.batteries
+    .filter((b) => b.capacityKwh !== null && b.soc !== null)
+    .reduce((sum, b) => sum + ((100 - b.reserveSoc) / 100) * (b.capacityKwh as number), 0);
   let level = (usable ?? 0) - unplannedKwh;
   let worst = level;
   let plannedInTime = 0;
   for (let i = 0; i < horizon; i++) {
-    level += chargeLayer?.[i] ?? 0;
     plannedInTime += chargeLayer?.[i] ?? 0;
-    level -= Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0);
+    const need = Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0);
+    level = Math.min(level + (chargeLayer?.[i] ?? 0) - need, room);
     worst = Math.min(worst, level);
   }
   const verdict =

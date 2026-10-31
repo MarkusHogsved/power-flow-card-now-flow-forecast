@@ -250,7 +250,8 @@ export const forecastSnapshot = (ctx: ViewContext) => {
       ]
         .filter((x) => x)
         .join(" ") || null,
-    plusColor: d.vehicles.length ? rgb(d.vehicles[0].v.color) : 0,
+    // The vehicle's colour when it is in the summary, otherwise the battery's (charging only)
+    plusColor: d.evTotal > 0 && d.vehicles.length ? rgb(d.vehicles[0].v.color) : rgb(COLORS.battery),
     evColor: d.evLayer ? rgb(d.evLayer.color) : 0,
     demandColor: rgb(COLORS.demand),
     chargeColor: rgb(COLORS.battery),

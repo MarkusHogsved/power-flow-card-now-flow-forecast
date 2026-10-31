@@ -343,6 +343,15 @@ describe("card", () => {
     expect(text).not.toContain("Covered with the planned grid charging");
     expect(text).toContain("Short by");
 
+    // Charging more than the battery can hold does not count (Codex #34): a
+    // huge early window only fills the 54 kWh above the reserve, and 4 kWh/h
+    // until solar at hour 18 needs more than that
+    states["sensor.loadcast"] = ["96", { forecast: forecast.map((f) => ({ ...f, kwh: 4, kwh_p10: 3, kwh_p90: 5 })) }];
+    states["sensor.plan"] = ["400", { windows: [{ start: at(1).toISOString(), end: at(2).toISOString(), kwh: 400, target_soc: 100, name: "X" }] }] as typeof states["sensor.plan"];
+    card = await mount(config, states);
+    expect(root(card).textContent).not.toContain("Covered with the planned grid charging");
+    expect(root(card).textContent).toContain("Short by");
+
     // A plan entity with no windows says so
     states["sensor.plan"] = ["0", { windows: [] }];
     card = await mount(config, states);
