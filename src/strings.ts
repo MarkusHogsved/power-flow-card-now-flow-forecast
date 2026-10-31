@@ -123,6 +123,7 @@ const en = {
   "last.opt_charge": "Charge {from}-{to}",
   "last.opt_direct": "From the grid {from}-{to}",
   "last.opt_sub": "avg {price}",
+  "last.opt_rest": "Smaller purchases at other times",
   "last.prices_until": "prices known until {until}",
   "forecast.axis": "{value} kWh",
   "last.no_capacity": "Set capacity_kwh on a battery to see if it lasts.",

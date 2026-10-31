@@ -264,7 +264,8 @@ export const forecastData = (ctx: ViewContext) => {
       const charged = new Array<number>(n).fill(0); // grid kWh for extra charging
       const direct = new Array<number>(n).fill(0); // grid kWh straight to the home
       const lvl = new Array<number>(n).fill(0); // stored energy after each period
-      let level = usable ?? 0;
+      // The same start as the verdict: a vehicle without a plan draws on the batteries (Codex #37)
+      let level = (usable ?? 0) - unplannedKwh;
       for (let k = 0; k < n; k++) {
         let next = level + planned[k] - need[k];
         while (next < -1e-6) {
@@ -313,10 +314,13 @@ export const forecastData = (ctx: ViewContext) => {
           } else rows.push({ kind, a: periods[k].a, z: periods[k].z, kwh, cost: kwh * periods[k].price });
         }
       }
-      rows
-        .filter((r) => r.kwh > 0.5)
+      // The four largest in time order; whatever is left as one line, so many
+      // small purchases never vanish (Codex #37)
+      const top = [...rows].sort((x, y) => y.kwh - x.kwh).slice(0, 4);
+      const rest = rows.filter((r) => !top.includes(r)).reduce((sum, r) => sum + r.kwh, 0);
+      top
+        .filter((r) => r.kwh > 0.1)
         .sort((x, y) => x.a - y.a)
-        .slice(0, 4)
         .forEach((r) =>
           suggestion.push({
             label: t(r.kind === "charge" ? "last.opt_charge" : "last.opt_direct", { from: at(new Date(r.a)), to: at(new Date(r.z)) }),
@@ -324,6 +328,7 @@ export const forecastData = (ctx: ViewContext) => {
             value: `~${formatEnergy(hass, r.kwh)}`,
           }),
         );
+      if (rest > 0.1) suggestion.push({ label: t("last.opt_rest"), sub: null, value: `~${formatEnergy(hass, rest)}` });
       const lastEnd = periods[n - 1].z;
       if (lastEnd < horizonEnd - 60_000) suggestion[0].sub = t("last.prices_until", { until: at(new Date(lastEnd)) });
     }
