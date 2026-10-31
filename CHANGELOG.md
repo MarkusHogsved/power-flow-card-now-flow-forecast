@@ -2,12 +2,15 @@
 
 ## 0.13.0
 
-- Forecast suggestion rebuilt around "never buy expensive power when cheaper
-  comes": when the batteries run out, then either charging before (only if
-  that block, with ~10 % losses, beats buying directly after the run-out) or
-  buying directly until the cheapest refill, and that refill (block, price,
-  energy). 0.12.0 always suggested the cheapest block before the run-out,
-  even at 2.79 kr with cheap night power ahead.
+- Forecast suggestion rebuilt as a small optimiser around "never buy
+  expensive power when cheaper comes": after "batteries empty ~HH:MM", price
+  period by price period until solar, every missing kWh comes either straight
+  from the grid at that time or from charging in an earlier, cheaper period
+  (~10 % round-trip losses, `max_charge_kw`, room in the batteries and planned
+  charging counted). Shown as up to four rows, "Charge HH-HH" and "From the
+  grid HH-HH", with energy and average price. 0.12.0 always suggested the
+  cheapest block before the run-out, even at 2.79 kr with cheap night power
+  ahead.
 - P4 Forecast: the bands a little stronger again (0.12.0 toned them down too
   far on the panel), a saturated purple demand line, and the grid labels
   above their lines instead of on them.

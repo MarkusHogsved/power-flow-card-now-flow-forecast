@@ -389,28 +389,27 @@ describe("card", () => {
       return root(card).textContent?.replace(/\s+/g, " ") ?? "";
     };
 
-    // Cheap before the run-out (0.50 from 3 to 9 h), expensive after: charge before
+    const time = "(tomorrow )?\\d{1,2}[:.]\\d\\d( [AP]M)?";
+    // Cheap before the run-out (0.50 from 3 to 9 h), expensive after: charge then
     let t1 = await text((h) => (h >= 3 && h < 9 ? 0.5 : 2));
-    expect(t1).toMatch(/Batteries empty ~(tomorrow )?\d{1,2}[:.]\d\d( [AP]M)?, short until solar/);
-    expect(t1).toMatch(/Charge before then: (tomorrow )?\d{1,2}[:.]\d\d/);
-    expect(t1).toContain("avg 0.50 SEK/kWh - cheaper than 2.00 SEK/kWh later, losses included");
-    // A real block of cheap energy, not just the gap before a refill (Codex #37):
-    // ~42 kWh fit in the 54 kWh room during the block
-    const early = Number(/losses included ~(\d+(\.\d)?) kWh/.exec(t1)?.[1]);
-    expect(early).toBeGreaterThan(20);
+    expect(t1).toMatch(new RegExp(`Batteries empty ~${time}, short until solar`));
+    const charge = new RegExp(`Charge ${time}-${time} ?avg 0\\.50 SEK/kWh ~(?<kwh>\\d+(\\.\\d)?) kWh`).exec(t1);
+    expect(charge).not.toBeNull();
+    // A real block of cheap energy, not just a gap (Codex #37)
+    expect(Number(charge?.groups?.kwh)).toBeGreaterThan(20);
 
-    // Expensive before (2.80), cheap night after the run-out (0.50 from 14 to 20 h):
-    // never buy expensive power when cheaper comes - buy directly, then refill
+    // Expensive before (2.80), cheap after the run-out (0.50 from 14 to 20 h):
+    // never buy expensive power when cheaper comes - nothing charged at 2.80,
+    // bought directly until the cheap hours, which then also charge for later
     t1 = await text((h) => (h >= 14 && h < 20 ? 0.5 : 2.8));
-    expect(t1).not.toContain("Charge before then");
-    expect(t1).toMatch(/Then from the grid until (tomorrow )?\d{1,2}[:.]\d\d/);
-    expect(t1).toContain("avg 2.80 SEK/kWh - charging before then would cost more");
-    expect(t1).toMatch(/Cheapest refill: (tomorrow )?\d{1,2}[:.]\d\d( [AP]M)?-/);
-    expect(t1).toContain("avg 0.50 SEK/kWh");
+    expect(t1).not.toMatch(/Charge [^~]* avg 2\.80/);
+    expect(t1).toMatch(new RegExp(`From the grid ${time}-${time} ?avg 2\\.80 SEK/kWh`));
+    expect(t1).toMatch(new RegExp(`Charge ${time}-${time} ?avg 0\\.50 SEK/kWh`));
 
-    // Slightly cheaper before but not enough to cover the losses: still buy later
+    // Slightly cheaper before but not enough to cover the losses: nothing charged
     t1 = await text((h) => (h < 10 ? 1.9 : 2));
-    expect(t1).not.toContain("Charge before then");
+    expect(t1).not.toMatch(/Charge \d/);
+    expect(t1).toContain("From the grid");
 
     // grid lines carry their value
     expect(t1).toMatch(/\d+(\.\d+)? kWh/);
