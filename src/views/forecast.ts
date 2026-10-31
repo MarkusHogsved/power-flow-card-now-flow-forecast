@@ -223,7 +223,8 @@ export const forecastData = (ctx: ViewContext) => {
 
   // Short and nothing (enough) planned: when the batteries run out, and the
   // cheapest grid charging that fits before then - a suggestion, not a plan
-  const missing = verdict && !verdict.ok ? (plannedInTime > 0.5 ? -worst : demand - (usable ?? 0)) : 0;
+  // From the same trajectory as the run-out (the running hour prorated, planned charging in) (Codex #35)
+  const missing = verdict && !verdict.ok ? Math.max(-worst, 0) : 0;
   let suggestion:
     | { runOut: Date; kwh: number; later: number; start: Date; end: Date; price: string }
     | { runOut: Date; kwh: number; later: number; start: null }
@@ -253,10 +254,14 @@ export const forecastData = (ctx: ViewContext) => {
       let atStart = usable ?? 0;
       let during = 0;
       hours.slice(0, horizon).forEach((h, i) => {
-        const a = h.start.getTime();
-        if (a + 3_600_000 <= start) atStart = startLevel[i + 1] ?? level;
-        const overlap = Math.min(a + 3_600_000, end) - Math.max(a, start, now.getTime());
-        if (overlap > 0) during += (needs[i] * overlap) / Math.max(a + 3_600_000 - Math.max(a, now.getTime()), 1);
+        const a = Math.max(h.start.getTime(), now.getTime());
+        const z = h.start.getTime() + 3_600_000;
+        const span = Math.max(z - a, 1);
+        // Level at the block start, also part way into an hour (Codex #35)
+        if (a <= start && start < z) atStart = startLevel[i] + (chargeLayer?.[i] ?? 0) * ((start - a) / span) - needs[i] * ((start - a) / span);
+        else if (z <= start) atStart = startLevel[i + 1] ?? level;
+        const overlap = Math.min(z, end) - Math.max(a, start);
+        if (overlap > 0) during += (needs[i] * overlap) / span;
       });
       const kwh = Math.min(missing, Math.max(room - Math.max(atStart, 0) + during, 0), kw > 0 ? kw * ((end - start) / 3_600_000) : missing);
       suggestion = {
