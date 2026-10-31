@@ -244,7 +244,6 @@ export const forecastSnapshot = (ctx: ViewContext) => {
       rows.push({ label: t("last.charge_none"), sub: null, value: "", color: rgb(COLORS.battery), frac: null });
     }
   }
-  const sug = d.suggestion;
   return {
     title: t("forecast.title"),
     unavailable: null,
@@ -279,18 +278,8 @@ export const forecastSnapshot = (ctx: ViewContext) => {
     rows,
     verdict: d.verdict?.text ?? null,
     verdictOk: d.verdict?.ok ?? false,
-    // After the verdict: when the batteries run out and the cheapest charging before then
-    suggestion: sug
-      ? {
-          label: sug.start ? t("last.suggest", { from: d.at(sug.start), to: d.at(sug.end) }) : t("last.runout", { runout: d.at(sug.runOut) }),
-          sub: sug.start
-            ? t("last.suggest_sub", { runout: d.at(sug.runOut), price: sug.price }) +
-              (sug.later > 0 ? ` · ${t("last.suggest_later", { energy: formatEnergy(hass, sug.later) })}` : "")
-            : null,
-          value: `~${formatEnergy(hass, sug.kwh)}`,
-          color: rgb(COLORS.battery),
-        }
-      : null,
+    // After the verdict: when the batteries run out and what is cheapest from then
+    suggestion: d.suggestion.map((r) => ({ ...r, color: rgb(COLORS.battery) })),
     scale: axis(Math.max(...d.hours.map((h, i) => Math.max(h.p90, h.kwh + (d.evLayer?.kwh[i] ?? 0) + (d.chargeLayer?.[i] ?? 0))))),
     solar: d.solar
       ? {

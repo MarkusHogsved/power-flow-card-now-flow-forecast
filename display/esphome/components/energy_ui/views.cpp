@@ -482,8 +482,8 @@ void EnergyUi::apply_forecast_(JsonObject f) {
     lv_obj_set_width(v, 600);
     lv_label_set_long_mode(v, LV_LABEL_LONG_MODE_WRAP);
   }
-  JsonObject sug = f["suggestion"];
-  if (!sug.isNull()) {
+  // When the batteries run out and what is cheapest from then (rows like the ones above)
+  for (JsonObject sug : f["suggestion"].as<JsonArray>()) {
     lv_obj_t *row = plain(this->fc_rows_);
     lv_obj_set_size(row, 600, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_COLUMN);

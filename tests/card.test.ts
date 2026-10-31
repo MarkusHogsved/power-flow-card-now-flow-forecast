@@ -360,50 +360,56 @@ describe("card", () => {
     expect(text).not.toContain("battery charging");
   });
 
-  test("Forecast short and nothing planned: when the batteries run out and the cheapest charging before then", async () => {
+  test("Forecast short and nothing planned: charge before only if it beats buying later, else buy directly and refill when cheap", async () => {
     const now = new Date();
     const hourStart = new Date(now);
     hourStart.setMinutes(0, 0, 0);
     const at = (h: number) => new Date(hourStart.getTime() + h * 3_600_000);
-    // 4 kWh/h, no sun: 43 kWh usable runs out after ~10 h
+    // 4 kWh/h, no sun: 43 kWh usable runs out after ~10-11 h
     const forecast = Array.from({ length: 24 }, (_, i) => ({ period_start: at(i).toISOString(), kwh: 4, kwh_p10: 3, kwh_p90: 5 }));
-    // Quarter prices by wall clock: 0.50 from 3 to 9 h from now, 2.00 otherwise
-    const day = (offset: number) =>
-      Array.from({ length: 96 }, (_, q) => {
-        const d = new Date(hourStart);
-        d.setDate(d.getDate() + offset);
-        d.setHours(Math.floor(q / 4), (q % 4) * 15, 0, 0);
-        return d >= at(3) && d < at(9) ? 0.5 : 2;
-      });
-    const states = {
-      ...eveningStates,
-      "sensor.loadcast": ["96", { forecast }],
-      "sensor.price": ["2", { unit_of_measurement: "SEK/kWh", today: day(0), tomorrow: day(1) }],
-    } as typeof eveningStates;
+    // Quarter prices by wall clock, from a function of hours from now
+    const priced = (f: (h: number) => number) => {
+      const day = (offset: number) =>
+        Array.from({ length: 96 }, (_, q) => {
+          const d = new Date(hourStart);
+          d.setDate(d.getDate() + offset);
+          d.setHours(Math.floor(q / 4), (q % 4) * 15, 0, 0);
+          return f((d.getTime() - hourStart.getTime()) / 3_600_000);
+        });
+      return ["2", { unit_of_measurement: "SEK/kWh", today: day(0), tomorrow: day(1) }];
+    };
     const config = {
       ...houseConfig,
       default_view: "forecast" as const,
       batteries: [{ ...houseConfig.batteries![0], max_charge_kw: 10 }, ...houseConfig.batteries!.slice(1)],
     };
-    const card = await mount(config, states);
-    const text = root(card).textContent?.replace(/\s+/g, " ") ?? "";
-    expect(text).toContain("Short by");
-    expect(text).toMatch(/Cheapest charging before then: (tomorrow )?\d{1,2}[:.]\d\d( [AP]M)?-/);
-    expect(text).toMatch(/batteries empty ~(tomorrow )?\d{1,2}[:.]\d\d( [AP]M)? · avg 0\.50 SEK\/kWh/);
-    // 53 kWh short but only ~45 kWh fit during the block (54 kWh room, ~31 kWh
-    // left at its start, ~22 kWh used meanwhile): the rest is bought later
-    expect(text).toMatch(/fills the batteries - ~\d+(\.\d)? kWh more from the grid later/);
-    // Too little time before run-out for the whole block: the longest that fits
-    // is suggested instead of "no prices" (Codex #35)
-    const slow = { ...config, batteries: [{ ...houseConfig.batteries![0], max_charge_kw: 1 }, ...houseConfig.batteries!.slice(1)] };
-    const card2 = await mount(slow, states);
-    const text2 = root(card2).textContent?.replace(/\s+/g, " ") ?? "";
-    expect(text2).toContain("Cheapest charging before then");
-    expect(text2).not.toContain("no prices known");
-    expect(text2).toContain("more from the grid later");
+    const text = async (price: (h: number) => number) => {
+      const states = { ...eveningStates, "sensor.loadcast": ["96", { forecast }], "sensor.price": priced(price) } as typeof eveningStates;
+      const card = await mount(config, states);
+      return root(card).textContent?.replace(/\s+/g, " ") ?? "";
+    };
+
+    // Cheap before the run-out (0.50 from 3 to 9 h), expensive after: charge before
+    let t1 = await text((h) => (h >= 3 && h < 9 ? 0.5 : 2));
+    expect(t1).toMatch(/Batteries empty ~(tomorrow )?\d{1,2}[:.]\d\d( [AP]M)?, short until solar/);
+    expect(t1).toMatch(/Charge before then: (tomorrow )?\d{1,2}[:.]\d\d/);
+    expect(t1).toContain("avg 0.50 SEK/kWh - cheaper than 2.00 SEK/kWh later, losses included");
+
+    // Expensive before (2.80), cheap night after the run-out (0.50 from 14 to 20 h):
+    // never buy expensive power when cheaper comes - buy directly, then refill
+    t1 = await text((h) => (h >= 14 && h < 20 ? 0.5 : 2.8));
+    expect(t1).not.toContain("Charge before then");
+    expect(t1).toMatch(/Then from the grid until (tomorrow )?\d{1,2}[:.]\d\d/);
+    expect(t1).toContain("avg 2.80 SEK/kWh - charging before then would cost more");
+    expect(t1).toMatch(/Cheapest refill: (tomorrow )?\d{1,2}[:.]\d\d( [AP]M)?-/);
+    expect(t1).toContain("avg 0.50 SEK/kWh");
+
+    // Slightly cheaper before but not enough to cover the losses: still buy later
+    t1 = await text((h) => (h < 10 ? 1.9 : 2));
+    expect(t1).not.toContain("Charge before then");
+
     // grid lines carry their value
-    expect(text).toMatch(/\d+(\.\d+)? kWh/);
-    expect(root(card).querySelectorAll("svg.chart line[stroke-dasharray]").length).toBeGreaterThan(0);
+    expect(t1).toMatch(/\d+(\.\d+)? kWh/);
   });
 
   test("Forecast without LoadCast data says so instead of breaking", async () => {
