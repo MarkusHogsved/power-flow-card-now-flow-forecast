@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { chargeByHour, readChargePlan, readSolarByHour, cheapestBlock, currentPriceIndex, expectedImportKwh, pricePeriodMs, readPrices, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
+import { chartScale, chargeByHour, readChargePlan, readSolarByHour, cheapestBlock, currentPriceIndex, expectedImportKwh, pricePeriodMs, readPrices, netDemandKwh, readLoadCast, readSolarP10ByHour, readUpcomingPrices, solarTakeoverIndex, sumKwh, usableBatteryKwh, vehicleByHour } from "../src/forecast";
 import type { BatteryState } from "../src/model";
 import { niceStep, stepDecimals } from "../src/snapshot";
 import { makeHass } from "./helpers";
@@ -77,6 +77,7 @@ describe("usableBatteryKwh", () => {
     powerW: 0,
     capacityKwh,
     reserveSoc,
+    maxChargeKw: null,
     stateOfChargeEntity: "sensor.b",
     insideHome: false,
   });
@@ -100,7 +101,7 @@ describe("expectedImportKwh", () => {
   const hours = (from: number, kwh: number[]) =>
     kwh.map((k, i) => ({ start: at(from + i), kwh: k, p10: k, p90: k }));
   const battery = (soc: number) => ({
-    name: "B", icon: "", soc, powerW: 0, capacityKwh: 60, reserveSoc: 10, stateOfChargeEntity: "s", insideHome: false,
+    name: "B", icon: "", soc, powerW: 0, capacityKwh: 60, reserveSoc: 10, maxChargeKw: null, stateOfChargeEntity: "s", insideHome: false,
   });
 
   test("a battery that covers the evening means nothing more from the grid", () => {
@@ -292,5 +293,13 @@ describe("solar bands and the battery charging plan", () => {
     // A window in progress: only what is left of it, spread over the rest
     const running = [{ start: new Date(NOW.getTime() - 3_600_000), end: new Date(NOW.getTime() + 3_600_000), kwh: 4, targetSoc: null, name: "" }];
     expect(chargeByHour(hours, running, NOW).reduce((s, v) => s + v, 0)).toBeCloseTo(4);
+  });
+});
+
+describe("chartScale", () => {
+  test("headroom on top and 1-3 round grid values below it", () => {
+    expect(chartScale(3)).toEqual({ max: 3.24, ticks: [1, 2, 3] });
+    expect(chartScale(5.2).ticks).toEqual([2, 4]);
+    expect(chartScale(0).ticks.every((v) => v < chartScale(0).max)).toBe(true);
   });
 });

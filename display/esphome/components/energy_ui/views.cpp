@@ -366,6 +366,8 @@ void EnergyUi::apply_forecast_(JsonObject f) {
     for (JsonObject h : hours)
       max = fmaxf(max, fmaxf(h["p90"] | 0.0f, (h["kwh"] | 0.0f) + (h["ev"] | 0.0f) + (h["charge"] | 0.0f)));
     max *= 1.08f;
+    JsonObject scale = f["scale"];
+    if (!scale.isNull()) max = scale["max"] | max;
     float step = (float) FC_W / n;
     int plot = FC_H - 2;
     auto y = [&](float v) { return plot - v / max * plot; };
@@ -375,7 +377,7 @@ void EnergyUi::apply_forecast_(JsonObject f) {
       JsonObject h = hours[i];
       float kwh = h["kwh"] | 0.0f, ev = h["ev"] | 0.0f, charge = h["charge"] | 0.0f;
       for (int x = (int) (step * i); x < (int) (step * (i + 1)); x++) {
-        c.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), demand, 50);
+        c.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), demand, 26);
         if (ev > 0) c.vspan(x, y(kwh + ev), y(kwh), ev_color, 140);
         if (charge > 0.001f) c.vspan(x, y(kwh + ev + charge), y(kwh + ev), charge_color, 150);
       }
@@ -383,7 +385,14 @@ void EnergyUi::apply_forecast_(JsonObject f) {
       ys.push_back(y(kwh));
     }
     c.fill_rect(0, plot, FC_W, plot + 1, BORDER, 255);
-    for (size_t i = 1; i < n; i++) c.line(xs[i - 1], ys[i - 1], xs[i], ys[i], demand, 2.5f);
+    // Grid lines with their value (kWh per hour) at the right edge
+    for (JsonObject t : scale["ticks"].as<JsonArray>()) {
+      float gy = y(t["v"] | 0.0f);
+      c.line(0, gy, FC_W, gy, BORDER, 1.0f, 255, 6);
+      lv_obj_t *l = this->text_(this->fc_labels_, this->small_, MUTED, t["label"] | "");
+      lv_obj_set_pos(l, 24 + FC_W - 64, FC_Y + (int) gy - 20);
+    }
+    for (size_t i = 1; i < n; i++) c.line(xs[i - 1], ys[i - 1], xs[i], ys[i], demand, 3.0f);
     c.line(xs[0], ys[0], xs[0], ys[0], demand, 8);
     int peak = f["peak"] | 0;
     lv_obj_t *pl = this->text_(this->fc_labels_, this->small_, MUTED, f["peakLabel"] | "");
@@ -414,6 +423,8 @@ void EnergyUi::apply_forecast_(JsonObject f) {
       float smax = 0.1f;
       for (JsonObject h : sh) smax = fmaxf(smax, h["p90"] | 0.0f);
       smax *= 1.08f;
+      JsonObject sscale = solar["scale"];
+      if (!sscale.isNull()) smax = sscale["max"] | smax;
       float step = (float) FC_W / m;
       int plot = SO_H - 2;
       auto y = [&](float v) { return plot - v / smax * plot; };
@@ -422,14 +433,20 @@ void EnergyUi::apply_forecast_(JsonObject f) {
         JsonObject h = sh[i];
         float p50 = h["p50"] | 0.0f;
         for (int x = (int) (step * i); x < (int) (step * (i + 1)); x++) {
-          s2.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), sc, 45);
-          s2.vspan(x, y(p50), plot, sc, 90);
+          s2.vspan(x, y(h["p90"] | 0.0f), y(h["p10"] | 0.0f), sc, 22);
+          s2.vspan(x, y(p50), plot, sc, 130);
         }
         xs.push_back(step / 2 + step * i);
         ys.push_back(y(p50));
       }
       s2.fill_rect(0, plot, FC_W, plot + 1, BORDER, 255);
-      for (size_t i = 1; i < m; i++) s2.line(xs[i - 1], ys[i - 1], xs[i], ys[i], sc, 2.5f);
+      for (JsonObject t : sscale["ticks"].as<JsonArray>()) {
+        float gy = y(t["v"] | 0.0f);
+        s2.line(0, gy, FC_W, gy, BORDER, 1.0f, 255, 6);
+        lv_obj_t *l = this->text_(this->fc_solar_labels_, this->small_, MUTED, t["label"] | "");
+        lv_obj_set_pos(l, 24 + FC_W - 64, SO_CHART_Y + (int) gy - 20);
+      }
+      for (size_t i = 1; i < m; i++) s2.line(xs[i - 1], ys[i - 1], xs[i], ys[i], sc, 3.0f);
       lv_obj_t *now = this->text_(this->fc_solar_labels_, this->small_, MUTED, f["nowLabel"] | "");
       lv_obj_set_pos(now, 24, SO_CHART_Y + SO_H + 4);
       for (size_t i = 0; i < m && i < n; i++) {
@@ -462,6 +479,21 @@ void EnergyUi::apply_forecast_(JsonObject f) {
     lv_obj_t *v = this->text_(this->fc_rows_, this->bold_, (f["verdictOk"] | false) ? GOOD : BAD, f["verdict"] | "");
     lv_obj_set_width(v, 600);
     lv_label_set_long_mode(v, LV_LABEL_LONG_MODE_WRAP);
+  }
+  JsonObject sug = f["suggestion"];
+  if (!sug.isNull()) {
+    lv_obj_t *row = plain(this->fc_rows_);
+    lv_obj_set_size(row, 600, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(row, 4, 0);
+    lv_obj_t *top = plain(row);
+    lv_obj_set_size(top, 600, LV_SIZE_CONTENT);
+    lv_obj_t *label = this->text_(top, this->small_, MUTED, sug["label"] | "");
+    lv_obj_set_width(label, 460);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_MODE_WRAP);
+    lv_obj_t *value = this->text_(top, this->bold_, sug["color"] | BATTERY, sug["value"] | "");
+    lv_obj_align(value, LV_ALIGN_TOP_RIGHT, 0, 0);
+    if (!sug["sub"].isNull()) this->text_(row, this->small_, MUTED, sug["sub"] | "");
   }
   if (!f["note"].isNull()) this->text_(this->fc_rows_, this->small_, MUTED, f["note"] | "");
 }

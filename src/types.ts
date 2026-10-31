@@ -78,6 +78,11 @@ export interface BatteryConfig {
   capacity_kwh?: number;
   /** SOC the battery never goes below (%), default 0. */
   reserve_soc?: number;
+  /**
+   * How fast it can charge from the grid (kW). Forecast then sizes the
+   * cheapest charging block it suggests when the batteries fall short.
+   */
+  max_charge_kw?: number;
 }
 
 export interface LoadConfig {
