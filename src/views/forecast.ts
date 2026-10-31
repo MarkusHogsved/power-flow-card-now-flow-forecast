@@ -189,7 +189,10 @@ export const forecastData = (ctx: ViewContext) => {
   let runOut: Date | null = null;
   for (let i = 0; i < horizon; i++) {
     plannedInTime += chargeLayer?.[i] ?? 0;
-    const need = Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0);
+    // The hour now running counts only for the part still ahead (Codex #35)
+    const hourEnd = hours[i].start.getTime() + 3_600_000;
+    const ahead = Math.min(Math.max((hourEnd - now.getTime()) / 3_600_000, 0), 1);
+    const need = Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0) * ahead;
     const before = level + (chargeLayer?.[i] ?? 0);
     level = Math.min(before - need, room);
     worst = Math.min(worst, level);
@@ -222,7 +225,9 @@ export const forecastData = (ctx: ViewContext) => {
     const cur = currentPriceIndex(fits, now);
     const from = cur < 0 ? 0 : now > fits[cur].start ? cur + 1 : cur;
     const kw = m.batteries.reduce((sum, b) => sum + (b.maxChargeKw ?? 0), 0);
-    const needH = kw > 0 ? Math.ceil((missing / kw) * 4) / 4 : 1;
+    // Whole price periods, rounded up, so the block can deliver what it says (Codex #35)
+    const stepH = step / 3_600_000;
+    const needH = (kw > 0 ? Math.ceil(missing / kw / stepH - 1e-9) : Math.ceil(1 / stepH)) * stepH;
     const b = fits.length ? cheapestBlock(fits, from, needH) : null;
     const unit = String(hass.states[config.grid?.price ?? ""]?.attributes?.unit_of_measurement ?? "");
     suggestion = b
