@@ -392,7 +392,7 @@ describe("card", () => {
     expect(text).toMatch(/batteries empty ~(tomorrow )?\d{1,2}[:.]\d\d( [AP]M)? · avg 0\.50 SEK\/kWh/);
     // 53 kWh short but only ~45 kWh fit during the block (54 kWh room, ~31 kWh
     // left at its start, ~22 kWh used meanwhile): the rest is bought later
-    expect(text).toMatch(/fills the batteries - ~\d+ kWh more from the grid later/);
+    expect(text).toMatch(/fills the batteries - ~\d+(\.\d)? kWh more from the grid later/);
     // grid lines carry their value
     expect(text).toMatch(/\d+(\.\d+)? kWh/);
     expect(root(card).querySelectorAll("svg.chart line[stroke-dasharray]").length).toBeGreaterThan(0);
