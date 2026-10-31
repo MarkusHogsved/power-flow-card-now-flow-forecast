@@ -191,6 +191,7 @@ export const forecastData = (ctx: ViewContext) => {
   let runOut: Date | null = null;
   // Each hour's need (prorated), for sizing a suggestion
   const needs: number[] = [];
+  const startLevel: number[] = [];
   for (let i = 0; i < horizon; i++) {
     plannedInTime += chargeLayer?.[i] ?? 0;
     // The hour now running counts only for the part still ahead (Codex #35)
@@ -198,6 +199,7 @@ export const forecastData = (ctx: ViewContext) => {
     const ahead = Math.min(Math.max((hourEnd - now.getTime()) / 3_600_000, 0), 1);
     const need = Math.max(hours[i].kwh - (solarP10.get(hours[i].start.getTime()) ?? 0), 0) * ahead;
     needs.push(need);
+    startLevel.push(level);
     const charge = chargeLayer?.[i] ?? 0;
     const start = level;
     level = Math.min(start + charge - need, room);
@@ -277,31 +279,67 @@ export const forecastData = (ctx: ViewContext) => {
     const directEnd = refill ? after[refill.index].start.getTime() : horizonEnd;
     const direct = directEnd > out ? directBetween(out, directEnd) : null;
 
-    // Charging before the run-out, for what would otherwise be bought directly
+    // The level at an instant, from the trajectory (part way into an hour too)
+    const levelAt = (tm: number) => {
+      let lv = usable ?? 0;
+      hours.slice(0, horizon).forEach((h, i) => {
+        const ha = Math.max(h.start.getTime(), now.getTime());
+        const hz = h.start.getTime() + 3_600_000;
+        if (ha <= tm && tm < hz) lv = startLevel[i] + ((chargeLayer?.[i] ?? 0) - needs[i]) * ((tm - ha) / Math.max(hz - ha, 1));
+        else if (hz <= tm) lv = i + 1 < startLevel.length ? startLevel[i + 1] : level;
+      });
+      return Math.max(lv, 0);
+    };
+    // What fits in the batteries during a block: room above the level at its start
+    // plus what the home uses meanwhile
+    const fitsIn = (a: number, z: number) => Math.max(room - levelAt(a) + needBetween(a, z), 0);
+
+    // Everything after the run-out, bought the cheapest later way: directly until
+    // the refill, then the refill (which also feeds the home while it runs)
+    const refillKwh = refill ? needBetween(after[refill.index].start.getTime(), horizonEnd) : 0;
+    const laterKwh = (direct?.kwh ?? 0) + refillKwh;
+    const laterAvg =
+      laterKwh > 0 && (direct || refill)
+        ? ((direct ? direct.kwh * direct.avg : 0) + (refill ? refillKwh * refill.avg : 0)) / laterKwh
+        : null;
+
+    // Charging before the run-out pays only if cheaper than that, losses included
     const fits = prices.filter((p) => p.start.getTime() + step <= out);
     const cur = currentPriceIndex(fits, now);
     const from = cur < 0 ? 0 : now > fits[cur].start ? cur + 1 : cur;
     const availH = Math.max(fits.length - from, 0) * stepH;
-    const before = direct && availH > 0 ? cheapestBlock(fits, from, Math.min(blockHours(direct.kwh), availH)) : null;
+    const before = availH > 0 ? cheapestBlock(fits, from, Math.min(blockHours(missing), availH)) : null;
 
-    if (before && direct && before.avg / ROUND_TRIP < direct.avg) {
-      const hrs = (before.end.getTime() - fits[before.index].start.getTime()) / 3_600_000;
-      const kwh = Math.min(direct.kwh, kw > 0 ? kw * hrs : direct.kwh, room);
+    if (before && laterAvg !== null && before.avg / ROUND_TRIP < laterAvg) {
+      const bs = fits[before.index].start.getTime();
+      const be = before.end.getTime();
+      const kwh = Math.min(missing, kw > 0 ? (kw * (be - bs)) / 3_600_000 : missing, fitsIn(bs, be));
       suggestion.push({
         label: t("last.charge_before", { from: at(fits[before.index].start), to: at(before.end) }),
-        sub: t("last.charge_before_sub", { price: price(before.avg), later: price(direct.avg) }),
+        sub: t("last.charge_before_sub", { price: price(before.avg), later: price(laterAvg) }),
         value: `~${formatEnergy(hass, kwh)}`,
       });
-    } else if (direct && direct.kwh > 0.5) {
-      suggestion.push({
-        label: t("last.direct", { until: at(new Date(directEnd)) }),
-        sub: t("last.direct_sub", { price: price(direct.avg) }),
-        value: `~${formatEnergy(hass, direct.kwh)}`,
-      });
-    }
-    if (refill) {
-      const kwh = Math.min(needBetween(refill.end.getTime(), horizonEnd), room);
-      if (kwh > 0.5) {
+      // What the early block cannot cover is still bought later
+      if (missing - kwh > 0.5 && refill) {
+        suggestion.push({
+          label: t("last.refill", { from: at(after[refill.index].start), to: at(refill.end) }),
+          sub: t("last.refill_sub", { price: price(refill.avg) }),
+          value: `~${formatEnergy(hass, missing - kwh)}`,
+        });
+      }
+    } else {
+      if (direct && direct.kwh > 0.5) {
+        suggestion.push({
+          label: t("last.direct", { until: at(new Date(directEnd)) }),
+          sub: t("last.direct_sub", { price: price(direct.avg) }),
+          value: `~${formatEnergy(hass, direct.kwh)}`,
+        });
+      }
+      if (refill && refillKwh > 0.5) {
+        // Through the end of the forecast: what the block charges plus what the
+        // home draws from the grid meanwhile
+        const rs = after[refill.index].start.getTime();
+        const kwh = Math.min(refillKwh, fitsIn(rs, refill.end.getTime()) + needBetween(rs, refill.end.getTime()));
         suggestion.push({
           label: t("last.refill", { from: at(after[refill.index].start), to: at(refill.end) }),
           sub: t("last.refill_sub", { price: price(refill.avg) }),

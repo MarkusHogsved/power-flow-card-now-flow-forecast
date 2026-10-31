@@ -376,7 +376,7 @@ describe("card", () => {
           d.setHours(Math.floor(q / 4), (q % 4) * 15, 0, 0);
           return f((d.getTime() - hourStart.getTime()) / 3_600_000);
         });
-      return ["2", { unit_of_measurement: "SEK/kWh", today: day(0), tomorrow: day(1) }];
+      return ["2", { unit_of_measurement: "SEK/kWh", today: day(0), tomorrow: day(1) }] as [string, Record<string, unknown>];
     };
     const config = {
       ...houseConfig,
@@ -394,6 +394,10 @@ describe("card", () => {
     expect(t1).toMatch(/Batteries empty ~(tomorrow )?\d{1,2}[:.]\d\d( [AP]M)?, short until solar/);
     expect(t1).toMatch(/Charge before then: (tomorrow )?\d{1,2}[:.]\d\d/);
     expect(t1).toContain("avg 0.50 SEK/kWh - cheaper than 2.00 SEK/kWh later, losses included");
+    // A real block of cheap energy, not just the gap before a refill (Codex #37):
+    // ~42 kWh fit in the 54 kWh room during the block
+    const early = Number(/losses included ~(\d+(\.\d)?) kWh/.exec(t1)?.[1]);
+    expect(early).toBeGreaterThan(20);
 
     // Expensive before (2.80), cheap night after the run-out (0.50 from 14 to 20 h):
     // never buy expensive power when cheaper comes - buy directly, then refill
