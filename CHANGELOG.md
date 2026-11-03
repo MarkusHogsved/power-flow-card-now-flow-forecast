@@ -2,9 +2,9 @@
 
 ## 0.14.1
 
-- Tree layout: tomorrow at a glance in the source boxes - the solar
-  forecast (`solar.forecast_tomorrow`) under Solar and LoadCast's forecast
-  use for the whole of tomorrow under Grid (only when the forecast covers
+- Tree layout: tomorrow at a glance - the solar forecast
+  (`solar.forecast_tomorrow`) under Solar, and LoadCast's forecast use for
+  the whole of tomorrow under *Home uses* (only when the forecast covers
   every hour of it; LoadCast's default 48 h horizon does).
 
 ## 0.14.0

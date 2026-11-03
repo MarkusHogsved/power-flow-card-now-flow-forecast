@@ -178,8 +178,8 @@ const sourceBox = (ctx: ViewContext, tree: Tree, src: TreeSource, slot: { left: 
   const style = `width: ${slot.width}%; border-color: ${src.watts > 0 ? color : ""}`;
   if (src.kind === "battery") return html`<div class="tree-source wide" style=${style}>${batteryBox(ctx, tree)}</div>`;
   const solar = src.kind === "solar";
-  // Tomorrow at a glance: solar forecast under Solar, the home's forecast use (LoadCast) under Grid
-  const tomorrow = solar ? readNumber(hass, config.solar?.forecast_tomorrow) : loadCastTomorrowKwh(ctx);
+  // Tomorrow at a glance: the solar forecast (the home's forecast use sits in the hub)
+  const tomorrow = solar ? readNumber(hass, config.solar?.forecast_tomorrow) : null;
   return html`
     <div
       class="tree-source ${src.watts > 0 ? "active" : "idle"}"
@@ -203,9 +203,9 @@ const sourceBox = (ctx: ViewContext, tree: Tree, src: TreeSource, slot: { left: 
             class="muted tree-small"
             @click=${(e: Event) => {
               e.stopPropagation();
-              ctx.moreInfo(solar ? config.solar?.forecast_tomorrow : config.loadcast?.forecast);
+              ctx.moreInfo(config.solar?.forecast_tomorrow);
             }}
-            >${t(solar ? "tree.solar_tomorrow" : "tree.use_tomorrow", { energy: formatEnergy(hass, tomorrow) })}</span
+            >${t("tree.solar_tomorrow", { energy: formatEnergy(hass, tomorrow) })}</span
           >`
         : nothing}
     </div>
@@ -246,6 +246,8 @@ export const renderTree = (ctx: ViewContext) => {
   const n = tree.buildings.length;
   // Each source line ends on the hub's top edge, pulled in towards its middle
   const hubEnd = (center: number) => 50 + (center - 50) * 0.45;
+  // LoadCast forecasts what the home uses, so tomorrow's figure sits here
+  const useTomorrow = loadCastTomorrowKwh(ctx);
 
   return html`
     <div class="view">
@@ -267,6 +269,16 @@ export const renderTree = (ctx: ViewContext) => {
           <span>
             <span class="muted tree-small">${t("tree.home_uses")}</span><br />
             <b class="tree-hub-power">${formatPower(hass, m.homeW)}</b>
+            ${useTomorrow !== null
+              ? html`<br /><span
+                    class="muted tree-small"
+                    @click=${(e: Event) => {
+                      e.stopPropagation();
+                      ctx.moreInfo(ctx.config.loadcast?.forecast);
+                    }}
+                    >${t("tree.use_tomorrow", { energy: formatEnergy(hass, useTomorrow) })}</span
+                  >`
+              : nothing}
           </span>
           <span class="tree-mix" aria-hidden="true">
             <span style="flex: ${tree.mix.solar}; background: ${COLORS.solar}"></span>

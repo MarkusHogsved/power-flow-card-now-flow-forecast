@@ -75,7 +75,7 @@ const en = {
   "tree.grid_export": "Grid · selling",
   "tree.main_battery": "Main battery · {energy}",
   "tree.solar_tomorrow": "~{energy} tomorrow",
-  "tree.use_tomorrow": "~{energy} use tomorrow",
+  "tree.use_tomorrow": "~{energy} tomorrow",
   "now.prices": "Price, next {hours} h",
   "price.title": "Price today and tomorrow",
   "price.title_today": "Price today",

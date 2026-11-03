@@ -110,7 +110,7 @@ describe("tree layout", () => {
     });
   });
 
-  test("tomorrow at a glance: solar forecast under Solar, LoadCast's whole-day use under Grid", async () => {
+  test("tomorrow at a glance: solar forecast under Solar, LoadCast's whole-day use under Home uses", async () => {
     const now = new Date();
     const hour = (offset: number) => {
       const d = new Date(now);
@@ -132,7 +132,8 @@ describe("tree layout", () => {
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
     const hours = (end.getTime() - start.getTime()) / 3_600_000;
-    expect(boxes[1]).toContain(`~${hours * 2} kWh use tomorrow`);
+    expect(boxes[1]).not.toContain("tomorrow");
+    expect(text(root(card).querySelector(".tree-hub"))).toContain(`~${hours * 2} kWh tomorrow`);
   });
 
   test("LoadCast's tomorrow is left out unless the forecast covers the whole day", () => {
