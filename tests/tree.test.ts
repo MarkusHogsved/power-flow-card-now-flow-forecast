@@ -4,7 +4,7 @@ import type { PowerFlowCardNowFlowForecast } from "../src/power-flow-card-now-fl
 import { computeModel } from "../src/model";
 import type { CardConfig } from "../src/types";
 import { flowData } from "../src/views/flow";
-import { computeTree, sourceSlots } from "../src/views/tree";
+import { computeTree, loadCastTomorrowKwh, sourceSlots } from "../src/views/tree";
 import { eveningStates, houseConfig, makeHass } from "./helpers";
 
 /** The author's house with the tree layout: the heat pump sits on the garage's meter. */
@@ -108,6 +108,46 @@ describe("tree layout", () => {
       expect(text(box)).toContain("↓ 1.21 kW");
       expect(text(box)).not.toContain("idle");
     });
+  });
+
+  test("tomorrow at a glance: solar forecast under Solar, LoadCast's whole-day use under Home uses", async () => {
+    const now = new Date();
+    const hour = (offset: number) => {
+      const d = new Date(now);
+      d.setMinutes(0, 0, 0);
+      d.setHours(d.getHours() + offset);
+      return d;
+    };
+    const forecast = Array.from({ length: 48 }, (_, i) => ({ period_start: hour(i).toISOString(), kwh: 2 }));
+    const states = {
+      ...carEvening,
+      "sensor.solar_tomorrow": ["13.6", { unit_of_measurement: "kWh" }],
+      "sensor.loadcast": ["40", { forecast }],
+    };
+    const card = await mount(treeConfig, states);
+    const boxes = [...root(card).querySelectorAll(".tree-source")].map(text);
+    expect(boxes[0]).toContain("~14 kWh tomorrow");
+    const start = new Date(now);
+    start.setHours(24, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    const hours = (end.getTime() - start.getTime()) / 3_600_000;
+    expect(boxes[1]).not.toContain("tomorrow");
+    expect(text(root(card).querySelector(".tree-hub"))).toContain(`~${hours * 2} kWh tomorrow`);
+  });
+
+  test("LoadCast's tomorrow is left out unless the forecast covers the whole day", () => {
+    const now = new Date();
+    const forecast = Array.from({ length: 24 }, (_, i) => {
+      const d = new Date(now);
+      d.setMinutes(0, 0, 0);
+      d.setHours(d.getHours() + i);
+      return { period_start: d.toISOString(), kwh: 2 };
+    });
+    const hass = makeHass({ ...carEvening, "sensor.loadcast": ["40", { forecast }] });
+    const model = computeModel(hass, treeConfig);
+    const ctx = { hass, config: treeConfig, model, now, moreInfo: () => {}, toggleVehicle: () => {}, toggleReviewEvent: () => {} };
+    expect(loadCastTomorrowKwh(ctx)).toBeNull();
   });
 
   test("an unknown building name puts the load in the house", () => {
