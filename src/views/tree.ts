@@ -1,5 +1,6 @@
 import { html, nothing, svg } from "lit";
-import { formatEnergy, formatPercent, formatPower } from "../hass";
+import { formatEnergy, formatPercent, formatPower, readNumber } from "../hass";
+import { readLoadCast } from "../forecast";
 import { COLORS, IDLE_W, loadIndexOf, type BatteryState, type LoadState, type Model } from "../model";
 import { t } from "../strings";
 import type { CardConfig } from "../types";
@@ -94,6 +95,19 @@ export const computeTree = (config: CardConfig, m: Model): Tree => {
   };
 };
 
+/** LoadCast's forecast for the whole of tomorrow (kWh), null unless every hour of it is covered. */
+export const loadCastTomorrowKwh = (ctx: ViewContext): number | null => {
+  const start = new Date(ctx.now);
+  start.setHours(24, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  const hours = readLoadCast(ctx.hass, ctx.config.loadcast?.forecast, ctx.now, 72).filter(
+    (h) => h.start >= start && h.start < end,
+  );
+  const covered = (end.getTime() - start.getTime()) / 3_600_000; // 23 or 25 on a DST day
+  return hours.length >= covered ? hours.reduce((s, h) => s + h.kwh, 0) : null;
+};
+
 /** Thicker and faster with more power, capped at 5 kW (as in the classic diagram). */
 const strokeWidth = (w: number): number => 2 + 6 * Math.min(w, 5000) / 5000;
 const dashSeconds = (w: number): number => 0.6 + 2.4 * (1 - Math.min(w, 5000) / 5000);
@@ -164,6 +178,8 @@ const sourceBox = (ctx: ViewContext, tree: Tree, src: TreeSource, slot: { left: 
   const style = `width: ${slot.width}%; border-color: ${src.watts > 0 ? color : ""}`;
   if (src.kind === "battery") return html`<div class="tree-source wide" style=${style}>${batteryBox(ctx, tree)}</div>`;
   const solar = src.kind === "solar";
+  // Tomorrow at a glance: solar forecast under Solar, the home's forecast use (LoadCast) under Grid
+  const tomorrow = solar ? readNumber(hass, config.solar?.forecast_tomorrow) : loadCastTomorrowKwh(ctx);
   return html`
     <div
       class="tree-source ${src.watts > 0 ? "active" : "idle"}"
@@ -182,6 +198,16 @@ const sourceBox = (ctx: ViewContext, tree: Tree, src: TreeSource, slot: { left: 
         : fig.gridToday !== null
           ? html`<span class="muted tree-small">${fig.gridToday}${fig.gridCost !== null ? ` · ${fig.gridCost}` : ""}</span>`
           : nothing}
+      ${tomorrow !== null
+        ? html`<span
+            class="muted tree-small"
+            @click=${(e: Event) => {
+              e.stopPropagation();
+              ctx.moreInfo(solar ? config.solar?.forecast_tomorrow : config.loadcast?.forecast);
+            }}
+            >${t(solar ? "tree.solar_tomorrow" : "tree.use_tomorrow", { energy: formatEnergy(hass, tomorrow) })}</span
+          >`
+        : nothing}
     </div>
   `;
 };
