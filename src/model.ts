@@ -1,5 +1,5 @@
 import { friendlyName, readNumber, readPowerSumW, readPowerW } from "./hass";
-import type { CardConfig, HomeAssistant, LoadConfig } from "./types";
+import type { BuildingConfig, CardConfig, HomeAssistant, LoadConfig } from "./types";
 
 /** Below this, a power reading counts as zero (W). */
 export const IDLE_W = 30;
@@ -56,6 +56,8 @@ export interface LoadState {
   plan?: { start: Date; end: Date } | null;
   /** False when `presence` says the vehicle is away. */
   home?: boolean;
+  /** Large loads: name or entity of the `loads[]` entry it is measured inside. */
+  under?: string;
 }
 
 /** Battery level, charge limit and energy still to draw for a load that is a vehicle. */
@@ -113,6 +115,8 @@ export interface Model {
   running: LoadState[];
   /** Large loads that are a vehicle (have `soc`), running or not, in config order. */
   vehicles: LoadState[];
+  /** Large loads below their threshold, in config order. */
+  stopped: LoadState[];
   /** Always-on loads, in config order. */
   loads: LoadState[];
   /** Home power not covered by any configured load. */
@@ -124,6 +128,10 @@ export interface Model {
   phases: { name: string; amps: number | null }[];
   fuseA: number;
 }
+
+/** Index of the load an `under` names (by name or entity), -1 when none. */
+export const loadIndexOf = (loads: LoadState[], under: string | undefined): number =>
+  under ? loads.findIndex((l) => l.name === under || l.entity === under) : -1;
 
 const positive = (w: number): number => (w > IDLE_W ? w : 0);
 
@@ -195,14 +203,20 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
   const batteryChargeW = inFlows.reduce((s, b) => s + Math.max(b.powerW, 0), 0);
   const batteryDischargeW = inFlows.reduce((s, b) => s + Math.max(-b.powerW, 0), 0);
 
-  const toLoad = (l: NonNullable<CardConfig["loads"]>[number], i: number): LoadState => ({
+  const toLoad = (l: LoadConfig, i: number): LoadState => ({
     name: l.name ?? friendlyName(hass, l.entity),
     icon: l.icon ?? "mdi:flash",
     color: l.color ?? LOAD_PALETTE[i % LOAD_PALETTE.length],
     powerW: Math.max(readPowerW(hass, l.entity) ?? 0, 0),
     entity: l.entity,
+    ...(l.under ? { under: l.under } : {}),
     ...vehicle(hass, l),
   });
+  // loads[] may sum several entities; the first one names it and opens on click
+  const toBuilding = (l: BuildingConfig, i: number): LoadState => {
+    const ids = Array.isArray(l.entity) ? l.entity : [l.entity];
+    return { ...toLoad({ ...l, entity: ids[0] ?? "" }, i), powerW: Math.max(readPowerSumW(hass, ids) ?? 0, 0) };
+  };
   const large = (config.large_loads ?? []).map((l, i) => ({
     state: toLoad(l, i),
     threshold: l.threshold ?? DEFAULT_LOAD_THRESHOLD_W,
@@ -211,8 +225,11 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
     .filter((l) => l.state.powerW >= l.threshold)
     .map((l) => l.state)
     .sort((a, b) => b.powerW - a.powerW);
-  const loads = (config.loads ?? []).map(toLoad);
-  const measured = running.reduce((s, l) => s + l.powerW, 0) + loads.reduce((s, l) => s + l.powerW, 0);
+  const loads = (config.loads ?? []).map(toBuilding);
+  // A large load measured inside one of the loads[] is already in that load's figure
+  const inside = (l: LoadState) => loadIndexOf(loads, l.under) >= 0;
+  const measured =
+    running.filter((l) => !inside(l)).reduce((s, l) => s + l.powerW, 0) + loads.reduce((s, l) => s + l.powerW, 0);
   const restW = Math.max(homeW - measured, 0);
 
   const powers = { solarW, homeW, gridImportW, gridExportW, batteryChargeW, batteryDischargeW };
@@ -222,6 +239,7 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
     batteries,
     running,
     vehicles: large.map((l) => l.state).filter((l) => l.soc !== undefined),
+    stopped: large.filter((l) => l.state.powerW < l.threshold).map((l) => l.state),
     loads,
     restW,
     flows: computeFlows(powers),

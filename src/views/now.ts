@@ -90,7 +90,7 @@ export const vehicleTexts = (ctx: ViewContext, l: LoadState): { level: string; l
   return { level, left, cost };
 };
 
-const vehicleLines = (ctx: ViewContext, l: LoadState) => {
+export const vehicleLines = (ctx: ViewContext, l: LoadState) => {
   const v = vehicleTexts(ctx, l);
   if (!v) return nothing;
   return html`
@@ -139,6 +139,28 @@ export const phaseBar = (amps: number | null, fuseA: number): { frac: number; wa
   frac: Math.min(Math.abs(amps ?? 0) / fuseA, 1),
   warn: Math.abs(amps ?? 0) > fuseA * 0.88,
 });
+
+/** Phase currents against the main fuse, under the diagram. */
+export const phasesRow = (ctx: ViewContext) => {
+  const { hass, model: m } = ctx;
+  if (!m.phases.length) return nothing;
+  return html`
+    <div class="phases" style="grid-template-columns: repeat(${m.phases.length}, minmax(0, 1fr))">
+      <span class="muted phases-title">${t("fuse", { amps: String(m.fuseA) })}</span>
+      ${m.phases.map(
+        (p) => html`<span class="phase">
+          ${p.name}
+          <span class="track phase-track">
+            <span
+              style="width: ${phaseBar(p.amps, m.fuseA).frac * 100}%; background: ${phaseBar(p.amps, m.fuseA).warn ? "#E57F84" : COLORS.grid}"
+            ></span>
+          </span>
+          ${p.amps === null ? "–" : `${formatNumber(hass, Math.abs(p.amps), 1)} A`}
+        </span>`,
+      )}
+    </div>
+  `;
+};
 
 const loadTile = (ctx: ViewContext, l: LoadState) => html`
   <div
@@ -262,24 +284,7 @@ export const renderNow = (ctx: ViewContext) => {
           `
         : nothing}
 
-      ${m.phases.length
-        ? html`
-            <div class="phases" style="grid-template-columns: repeat(${m.phases.length}, minmax(0, 1fr))">
-              <span class="muted phases-title">${t("fuse", { amps: String(m.fuseA) })}</span>
-              ${m.phases.map(
-                (p) => html`<span class="phase">
-                  ${p.name}
-                  <span class="track phase-track">
-                    <span
-                      style="width: ${phaseBar(p.amps, m.fuseA).frac * 100}%; background: ${phaseBar(p.amps, m.fuseA).warn ? "#E57F84" : COLORS.grid}"
-                    ></span>
-                  </span>
-                  ${p.amps === null ? "–" : `${formatNumber(hass, Math.abs(p.amps), 1)} A`}
-                </span>`,
-              )}
-            </div>
-          `
-        : nothing}
+      ${phasesRow(ctx)}
     </div>
   `;
 };
