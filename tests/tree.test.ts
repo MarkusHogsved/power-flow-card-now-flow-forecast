@@ -3,6 +3,7 @@ import "../src/power-flow-card-now-flow-forecast";
 import type { PowerFlowCardNowFlowForecast } from "../src/power-flow-card-now-flow-forecast";
 import { computeModel } from "../src/model";
 import type { CardConfig } from "../src/types";
+import { flowData } from "../src/views/flow";
 import { computeTree, sourceSlots } from "../src/views/tree";
 import { eveningStates, houseConfig, makeHass } from "./helpers";
 
@@ -65,6 +66,18 @@ describe("tree layout", () => {
     const m = computeModel(makeHass(carEvening), treeConfig);
     // home - EV - garage - workshop; the heat pump is inside the garage's figure
     expect(m.restW).toBe(14300 - 11000 - 2650 - 100);
+  });
+
+  test("Flow counts a load under a building once: the building's sink is what is left of it", () => {
+    const hass = makeHass(carEvening);
+    const model = computeModel(hass, treeConfig);
+    const ctx = { hass, config: treeConfig, model, now: new Date(), moreInfo: () => {}, toggleVehicle: () => {}, toggleReviewEvent: () => {} };
+    const sinks = flowData(ctx).sinks;
+    const byKey = Object.fromEntries(sinks.map((x) => [x.key, x.value]));
+    expect(byKey["sensor.heat_pump"]).toBe(2400);
+    expect(byKey["sensor.garage"]).toBe(250);
+    const homeSinks = sinks.filter((x) => !x.key.startsWith("charge-")).reduce((a, x) => a + x.value, 0);
+    expect(homeSinks).toBe(14300);
   });
 
   test("an unknown building name puts the load in the house", () => {

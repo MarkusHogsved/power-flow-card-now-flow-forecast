@@ -12,7 +12,7 @@
   Large loads that are off are listed by name below the tree. Without
   `now_layout` (or with `classic`) Now looks as before.
 - A large load with `under` is no longer subtracted twice from *Rest of
-  home*: it is already part of its building's figure.
+  home* or the Flow Sankey: it is already part of its building's figure.
 
 ## 0.13.0
 

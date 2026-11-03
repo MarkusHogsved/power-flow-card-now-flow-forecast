@@ -1,6 +1,6 @@
 import { html, nothing, svg } from "lit";
 import { formatEnergy, formatPercent, formatPower, readNumber } from "../hass";
-import { COLORS } from "../model";
+import { COLORS, loadIndexOf } from "../model";
 import { layoutSankey, spreadLabels, type SankeyNode } from "../sankey";
 import { t } from "../strings";
 import type { ViewContext } from "./context";
@@ -36,7 +36,16 @@ export const flowData = (ctx: ViewContext) => {
   const sinks: SankeyNode[] = [
     ...m.running.map((l) => ({ key: l.entity, label: l.name, value: l.powerW, color: l.color })),
     { key: "rest", label: t("rest_of_home"), value: m.restW, color: "#C9D0D6" },
-    ...m.loads.map((l) => ({ key: l.entity, label: l.name, value: l.powerW, color: "#C9D0D6" })),
+    // A running large load measured inside a load (under) is taken out of that load's figure, not counted twice
+    ...m.loads.map((l, i) => ({
+      key: l.entity,
+      label: l.name,
+      value: Math.max(
+        l.powerW - m.running.filter((r) => loadIndexOf(m.loads, r.under) === i).reduce((s, r) => s + r.powerW, 0),
+        0,
+      ),
+      color: "#C9D0D6",
+    })),
     ...flowBatteries.map((b, i) => ({
       key: `charge-${i}`,
       label: t("flow.charging", { name: b.name }),
