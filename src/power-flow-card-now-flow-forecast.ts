@@ -19,11 +19,12 @@ import { renderFlow } from "./views/flow";
 import { renderForecast } from "./views/forecast";
 import { renderNow } from "./views/now";
 import { renderPrice } from "./views/price";
+import { renderTree } from "./views/tree";
 import { renderReview, type ReviewHours, type ReviewState } from "./views/review";
 import { VEHICLE_HOURS, type VehicleChartState } from "./views/vehicle";
 
 const CARD_TYPE = "power-flow-card-now-flow-forecast";
-export const VERSION = "0.13.0";
+export const VERSION = "0.14.0";
 const VIEWS: ViewName[] = ["now", "flow", "forecast", "review", "price"];
 
 /** The views this card offers: `views` from the config (valid ones, in its order), else all. */
@@ -92,6 +93,9 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
     }
     const unknown = (config.views ?? []).filter((v) => !VIEWS.includes(v));
     if (unknown.length) throw new Error(`views: unknown ${unknown.join(", ")} (use ${VIEWS.join(", ")})`);
+    if (config.now_layout && !["classic", "tree"].includes(config.now_layout)) {
+      throw new Error("now_layout must be classic or tree");
+    }
     this._config = config;
     this._view = loadView(config);
     this._review = { hours: loadHours(config), loading: false };
@@ -330,7 +334,9 @@ export class PowerFlowCardNowFlowForecast extends LitElement {
             </div>`
           : nothing}
         ${this._view === "now"
-          ? renderNow(ctx)
+          ? this._config.now_layout === "tree"
+            ? renderTree(ctx)
+            : renderNow(ctx)
           : this._view === "flow"
             ? renderFlow(ctx)
             : this._view === "forecast"

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.14.0
+
+- Now gets a second layout, `now_layout: tree`: solar, grid and the main
+  battery (backup batteries listed small inside its box) above *Home uses*,
+  the home's buildings below it - the house itself (`home.name`, what the
+  `loads[]` do not cover) and every `loads[]` entry - and each running large
+  load under the building it is measured in (`large_loads[].under`), with
+  *other* for the rest of that building. Battery and grid have one line each
+  whose dots run towards the home or away from it (charging, selling).
+  Large loads that are off are listed by name below the tree. Without
+  `now_layout` (or with `classic`) Now looks as before.
+- A large load with `under` is no longer subtracted twice from *Rest of
+  home*: it is already part of its building's figure.
+
 ## 0.13.0
 
 - Forecast suggestion rebuilt as a small optimiser around "never buy

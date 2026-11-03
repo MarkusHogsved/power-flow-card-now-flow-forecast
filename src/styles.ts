@@ -524,4 +524,247 @@ export const styles = css`
     font-size: 12px;
     color: var(--nff-muted);
   }
+  /* Now, tree layout: sources -> home -> buildings -> running loads */
+  .tree {
+    display: flex;
+    flex-direction: column;
+  }
+  .tree ha-icon {
+    --mdc-icon-size: 18px;
+  }
+  .tree-small {
+    font-size: 11px;
+    line-height: 14px;
+  }
+  /* Names wrap rather than being cut: columns are narrow with four buildings */
+  .tree-name {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 600;
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+  .tree-name ha-icon {
+    --mdc-icon-size: 15px;
+    flex: none;
+  }
+  .tree-sources {
+    display: flex;
+    align-items: stretch;
+    gap: 3%;
+    min-height: 92px;
+  }
+  .tree-source {
+    flex: none;
+    box-sizing: border-box;
+    border: 2px solid var(--nff-track);
+    border-radius: 14px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    text-align: center;
+    background: var(--card-background-color, transparent);
+    cursor: pointer;
+  }
+  .tree-source b {
+    font-size: 15px;
+  }
+  .tree-source.idle b {
+    color: var(--nff-muted);
+  }
+  .tree-source.wide {
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 8px 10px;
+    cursor: default;
+  }
+  .tree-battery {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+  }
+  .tree-battery > * {
+    cursor: pointer;
+  }
+  .tree-soc {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tree-soc .track {
+    flex: 1;
+  }
+  .tree-soc b {
+    font-size: 15px;
+  }
+  .tree-backups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    padding-top: 4px;
+    border-top: 1px solid var(--nff-track);
+    font-size: 11px;
+    color: var(--nff-muted);
+  }
+  .tree-backups span {
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tree-backups b {
+    color: var(--primary-text-color);
+  }
+  svg.tree-band {
+    display: block;
+    width: 100%;
+    height: 40px;
+    overflow: visible;
+  }
+  svg.tree-band + .tree-buildings {
+    margin-top: 0;
+  }
+  .tree-hub {
+    align-self: center;
+    width: 50%;
+    min-width: 150px;
+    box-sizing: border-box;
+    border: 3px solid var(--primary-text-color);
+    border-radius: 16px;
+    padding: 8px 12px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 4px 10px;
+    cursor: pointer;
+  }
+  .tree-hub ha-icon {
+    --mdc-icon-size: 26px;
+  }
+  .tree-hub-power {
+    font-size: 20px;
+  }
+  .tree-mix {
+    grid-column: 1 / -1;
+    display: flex;
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: var(--nff-track);
+  }
+  .tree-buildings {
+    display: grid;
+  }
+  .tree-col {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0 3px;
+    min-width: 0;
+  }
+  .tree-building {
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: hidden;
+    border: 2px solid var(--nff-track);
+    border-radius: 12px;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    cursor: pointer;
+  }
+  .tree-building.active {
+    border-color: var(--secondary-text-color, #c9d0d6);
+  }
+  .tree-building.house.active {
+    border-color: var(--primary-text-color);
+  }
+  .tree-building.idle {
+    color: var(--nff-muted);
+  }
+  .tree-building b {
+    font-size: 14px;
+  }
+  svg.tree-stem {
+    display: block;
+    width: 10px;
+    height: 14px;
+    margin: 0 auto;
+    overflow: visible;
+  }
+  .tree-load {
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: hidden;
+    border: 2px solid;
+    border-radius: 10px;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: var(--nff-chip);
+    cursor: pointer;
+  }
+  .tree-load b {
+    font-size: 14px;
+  }
+  .tree-load .load-line {
+    font-size: 11px;
+  }
+  .tree-other {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    margin-top: 6px;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background: var(--nff-chip);
+    font-size: 11px;
+  }
+  .tree-off {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .tree-off > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 12px;
+    color: var(--nff-muted);
+  }
+  .tree-off span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  .tree-off ha-icon {
+    --mdc-icon-size: 16px;
+  }
+  @keyframes tree-flow {
+    to {
+      stroke-dashoffset: -12;
+    }
+  }
+  .tree-dash {
+    stroke-dasharray: 2 10;
+    stroke-linecap: round;
+    animation: tree-flow 1.2s linear infinite;
+  }
+  .tree-dash.rev {
+    animation-direction: reverse;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tree-dash {
+      animation: none;
+    }
+  }
 `;

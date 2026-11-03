@@ -112,6 +112,8 @@ battery_plan: sensor.home_battery_charge_plan
 | `home.entity` | **Required.** Total home consumption (W or kW). |
 | `default_view` | View shown first: `now` (default), `flow`, `forecast`, `review` or `price`. The last view you picked is remembered per device. |
 | `views` | Which views the card offers, in that order (default all). With one view the tabs are hidden, e.g. `views: [price]` for a price card of its own. |
+| `now_layout` | How Now draws the flows: `classic` (default) or `tree` – sources above the home, the home's buildings (`loads[]`, plus the house itself) below it and each running large load under its building. Switch back by removing the key. |
+| `home.name` / `home.icon` | Tree layout: name and icon of the house – what is left of the home when the `loads[]` are taken away. Default *House*, `mdi:home`. |
 | `show_header` | The status line and price at the top (default `true`). |
 | `view_key` | Give each card its own key if you have several on one dashboard, so they remember their views separately. |
 | `solar.entity` | Solar production power. |
@@ -138,7 +140,8 @@ battery_plan: sensor.home_battery_charge_plan
 | `large_loads[].presence` | Whether the vehicle counts: its `device_tracker` and/or an on/off switch, one entity or a list. Forecast leaves it out unless each is `home` or `on` (unknown/unavailable count as home). |
 | `large_loads[].session_cost` | What the current charging session has cost so far (an entity in the price's currency). The cost line then shows the whole session – so far plus what is left to the limit – as *~x SEK this charge*. Review shows what each charge cost. |
 | `large_loads[].cost_price` | An entity with the price per kWh for the cost line, instead of the spot price – e.g. a sensor that weighs in what energy from the house battery is worth. Shown as *~x SEK estimated*. |
-| `loads[]` | `entity`, `name`. Always listed under *Other*, together with *Rest of home* (home minus all configured loads). |
+| `large_loads[].under` | The `loads[]` entry (its `name` or `entity`) this load is measured inside, e.g. a heat pump on the garage's circuit. The tree layout draws the load under that building; *Rest of home* then does not subtract it twice. Without it the load belongs to the house. |
+| `loads[]` | `entity`, `name` (and `icon` for the tree layout). Always listed under *Other*, together with *Rest of home* (home minus all configured loads). In the tree layout they are the buildings under the home. |
 | `phases` | Phase current sensors (A), in order L1, L2, L3. |
 | `fuse_current` | Main fuse in A, default 25. |
 | `loadcast.forecast` | LoadCast *forecast next 24 h* sensor (attribute `forecast`). Also gives *~x kWh more* under the grid node in Now: grid energy still expected before midnight (see below). |

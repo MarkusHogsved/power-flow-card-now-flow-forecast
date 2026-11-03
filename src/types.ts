@@ -119,6 +119,13 @@ export interface LoadConfig {
   presence?: string | string[];
   /** What the current charging session has cost so far (an entity in the price's currency). The tile then shows the whole session: this plus what is left to the limit. */
   session_cost?: string;
+  /**
+   * Large loads: the `loads[]` entry (its name or entity) whose meter this
+   * load is measured inside, e.g. a heat pump on the garage's circuit. The
+   * tree layout draws it under that building; without it the load belongs
+   * to the home itself (what is left when the `loads[]` are taken away).
+   */
+  under?: string;
 }
 
 export interface LoadCastConfig {
@@ -140,7 +147,20 @@ export interface CardConfig {
   show_header?: boolean;
   /** Key for remembering the last view on this device (one per card on a dashboard). */
   view_key?: string;
-  home: { entity: string };
+  home: {
+    entity: string;
+    /** Tree layout: name of the building that holds what `loads[]` do not cover, default "House". */
+    name?: string;
+    /** Tree layout: icon of that building, default mdi:home. */
+    icon?: string;
+  };
+  /**
+   * How Now draws the flows: `classic` (default) - solar, grid, home and the
+   * battery bank in one diagram, with Running now and Other below; `tree` -
+   * sources above the home, the home's buildings (`loads[]`) below it and
+   * each running large load under its building.
+   */
+  now_layout?: "classic" | "tree";
   solar?: SolarConfig;
   grid?: GridConfig;
   batteries?: BatteryConfig[];
