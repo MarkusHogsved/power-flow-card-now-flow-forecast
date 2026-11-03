@@ -1,5 +1,5 @@
 import { friendlyName, readNumber, readPowerSumW, readPowerW } from "./hass";
-import type { CardConfig, HomeAssistant, LoadConfig } from "./types";
+import type { BuildingConfig, CardConfig, HomeAssistant, LoadConfig } from "./types";
 
 /** Below this, a power reading counts as zero (W). */
 export const IDLE_W = 30;
@@ -203,7 +203,7 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
   const batteryChargeW = inFlows.reduce((s, b) => s + Math.max(b.powerW, 0), 0);
   const batteryDischargeW = inFlows.reduce((s, b) => s + Math.max(-b.powerW, 0), 0);
 
-  const toLoad = (l: NonNullable<CardConfig["loads"]>[number], i: number): LoadState => ({
+  const toLoad = (l: LoadConfig, i: number): LoadState => ({
     name: l.name ?? friendlyName(hass, l.entity),
     icon: l.icon ?? "mdi:flash",
     color: l.color ?? LOAD_PALETTE[i % LOAD_PALETTE.length],
@@ -212,6 +212,11 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
     ...(l.under ? { under: l.under } : {}),
     ...vehicle(hass, l),
   });
+  // loads[] may sum several entities; the first one names it and opens on click
+  const toBuilding = (l: BuildingConfig, i: number): LoadState => {
+    const ids = Array.isArray(l.entity) ? l.entity : [l.entity];
+    return { ...toLoad({ ...l, entity: ids[0] ?? "" }, i), powerW: Math.max(readPowerSumW(hass, ids) ?? 0, 0) };
+  };
   const large = (config.large_loads ?? []).map((l, i) => ({
     state: toLoad(l, i),
     threshold: l.threshold ?? DEFAULT_LOAD_THRESHOLD_W,
@@ -220,7 +225,7 @@ export const computeModel = (hass: HomeAssistant, config: CardConfig): Model => 
     .filter((l) => l.state.powerW >= l.threshold)
     .map((l) => l.state)
     .sort((a, b) => b.powerW - a.powerW);
-  const loads = (config.loads ?? []).map(toLoad);
+  const loads = (config.loads ?? []).map(toBuilding);
   // A large load measured inside one of the loads[] is already in that load's figure
   const inside = (l: LoadState) => loadIndexOf(loads, l.under) >= 0;
   const measured =

@@ -11,6 +11,8 @@
   whose dots run towards the home or away from it (charging, selling).
   Large loads that are off are listed by name below the tree. Without
   `now_layout` (or with `classic`) Now looks as before.
+- `loads[].entity` may be a list, summed - e.g. a building's meter plus a
+  pump on its own plug, so the pump can sit under that building.
 - A large load with `under` is no longer subtracted twice from *Rest of
   home* or the Flow Sankey: it is already part of its building's figure.
 

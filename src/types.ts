@@ -128,6 +128,11 @@ export interface LoadConfig {
   under?: string;
 }
 
+/** An always-on load: like a large load, but its power may be several entities summed (e.g. a building's meter plus a pump on its own plug). */
+export interface BuildingConfig extends Omit<LoadConfig, "entity"> {
+  entity: EntityList;
+}
+
 export interface LoadCastConfig {
   /** LoadCast "forecast next 24 h" sensor (attribute `forecast`). */
   forecast: string;
@@ -167,7 +172,7 @@ export interface CardConfig {
   /** Loads that only appear when running (EV, water heater, heat pump, washing machine ...). */
   large_loads?: LoadConfig[];
   /** Always-on loads listed under "Other" (garage, workshop ...). */
-  loads?: LoadConfig[];
+  loads?: BuildingConfig[];
   /** Phase currents L1-L3 (A). */
   phases?: string[];
   /** Main fuse (A), default 25. */

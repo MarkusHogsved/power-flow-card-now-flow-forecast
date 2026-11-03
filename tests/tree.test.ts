@@ -80,6 +80,36 @@ describe("tree layout", () => {
     expect(homeSinks).toBe(14300);
   });
 
+  test("a building may sum several entities, e.g. its meter plus a pump on its own plug", () => {
+    const config: CardConfig = {
+      ...treeConfig,
+      loads: [
+        { name: "Garage", entity: "sensor.garage" },
+        { name: "Pool house", entity: ["sensor.workshop", "sensor.drain"] },
+      ],
+      large_loads: [{ name: "Drainage pump", entity: "sensor.drain", threshold: 50, under: "Pool house" }],
+    };
+    const tree = computeTree(config, computeModel(makeHass({ ...carEvening, "sensor.drain": "250" }), config));
+    const pool = tree.buildings[2];
+    expect(pool.powerW).toBe(350);
+    expect(pool.entity).toBe("sensor.workshop");
+    expect(pool.children.map((l) => l.name)).toEqual(["Drainage pump"]);
+    expect(pool.otherW).toBe(100);
+  });
+
+  test("the main battery's box shows its own power, also when it is inside the home", () => {
+    const config: CardConfig = {
+      ...treeConfig,
+      batteries: [{ name: "UPS", state_of_charge: "sensor.anker_soc", entity: "sensor.anker_charge", inside_home: true }],
+    };
+    const card = mount(config, { ...carEvening, "sensor.anker_charge": "1210" });
+    return card.then((c) => {
+      const box = root(c).querySelector(".tree-battery");
+      expect(text(box)).toContain("↓ 1.21 kW");
+      expect(text(box)).not.toContain("idle");
+    });
+  });
+
   test("an unknown building name puts the load in the house", () => {
     const config: CardConfig = {
       ...treeConfig,

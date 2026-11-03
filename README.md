@@ -141,7 +141,7 @@ battery_plan: sensor.home_battery_charge_plan
 | `large_loads[].session_cost` | What the current charging session has cost so far (an entity in the price's currency). The cost line then shows the whole session – so far plus what is left to the limit – as *~x SEK this charge*. Review shows what each charge cost. |
 | `large_loads[].cost_price` | An entity with the price per kWh for the cost line, instead of the spot price – e.g. a sensor that weighs in what energy from the house battery is worth. Shown as *~x SEK estimated*. |
 | `large_loads[].under` | The `loads[]` entry (its `name` or `entity`) this load is measured inside, e.g. a heat pump on the garage's circuit. The tree layout draws the load under that building; *Rest of home* then does not subtract it twice. Without it the load belongs to the house. |
-| `loads[]` | `entity`, `name` (and `icon` for the tree layout). Always listed under *Other*, together with *Rest of home* (home minus all configured loads). In the tree layout they are the buildings under the home. |
+| `loads[]` | `entity` (one, or a list that is summed – e.g. a building's meter plus a pump on its own plug), `name` (and `icon` for the tree layout). Always listed under *Other*, together with *Rest of home* (home minus all configured loads). In the tree layout they are the buildings under the home. |
 | `phases` | Phase current sensors (A), in order L1, L2, L3. |
 | `fuse_current` | Main fuse in A, default 25. |
 | `loadcast.forecast` | LoadCast *forecast next 24 h* sensor (attribute `forecast`). Also gives *~x kWh more* under the grid node in Now: grid energy still expected before midnight (see below). |

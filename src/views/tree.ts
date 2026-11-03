@@ -126,10 +126,11 @@ export const sourceSlots = (sources: TreeSource[]): { left: number; width: numbe
 const batteryColor = (b: BatteryState): string => (b.soc !== null && b.soc < 30 ? COLORS.batteryLow : COLORS.battery);
 const arrow = (b: BatteryState): string => (b.powerW < 0 ? " ↑" : b.powerW > 0 ? " ↓" : "");
 
-const batteryBox = (ctx: ViewContext, tree: Tree, src: TreeSource) => {
+// The box tells the main battery's own power; the line carries all batteries outside the home
+const batteryBox = (ctx: ViewContext, tree: Tree) => {
   const { hass } = ctx;
   const b = tree.main as BatteryState;
-  const state = src.watts === 0 ? t("tree.idle") : `${src.reverse ? "↓" : "↑"} ${formatPower(hass, src.watts)}`;
+  const state = b.powerW === 0 ? t("tree.idle") : `${b.powerW > 0 ? "↓" : "↑"} ${formatPower(hass, b.powerW)}`;
   return html`
     <div class="tree-battery">
       <div class="row" @click=${() => ctx.moreInfo(b.stateOfChargeEntity)}>
@@ -161,7 +162,7 @@ const sourceBox = (ctx: ViewContext, tree: Tree, src: TreeSource, slot: { left: 
   const fig = nowFigures(ctx);
   const color = SOURCE_COLOR[src.kind];
   const style = `width: ${slot.width}%; border-color: ${src.watts > 0 ? color : ""}`;
-  if (src.kind === "battery") return html`<div class="tree-source wide" style=${style}>${batteryBox(ctx, tree, src)}</div>`;
+  if (src.kind === "battery") return html`<div class="tree-source wide" style=${style}>${batteryBox(ctx, tree)}</div>`;
   const solar = src.kind === "solar";
   return html`
     <div
